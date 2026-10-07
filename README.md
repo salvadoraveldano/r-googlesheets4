@@ -89,6 +89,17 @@ skills/r-googlesheets4/   SKILL.md, scripts/, references/, templates/, examples/
 .claude-plugin/           plugin and marketplace manifests
 ```
 
+## Getting help
+
+Problems with this skill (the agent's behavior, the helpers, the setup script, the docs)
+go to [this repository's issues](https://github.com/salvadoraveldano/r-googlesheets4/issues).
+Security problems: see [SECURITY.md](SECURITY.md), not a public issue.
+
+Please do **not** report skill problems to the googlesheets4, googledrive or gargle
+maintainers. This skill is unofficial, and they have not reviewed it. Reproduce the
+problem with plain R first (no agent, no skill); only if it still fails there is it a
+package bug, and then follow that package's own guidelines for reporting it.
+
 ## Credits
 
 This exists because of the R open-source community. Thank you to
