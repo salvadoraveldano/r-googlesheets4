@@ -1,0 +1,14 @@
+# private brief
+claude.md
+CLAUDE.private.md
+# secrets and caches
+.secrets/
+*.rds
+.Renviron
+.env
+*service-account*.json
+client_secret*.json
+# OS
+.DS_Store
+._*
+.blocklist

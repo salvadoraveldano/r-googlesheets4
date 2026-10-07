@@ -1,0 +1,14 @@
+{
+  "name": "r-googlesheets4-marketplace",
+  "owner": {
+    "name": "Salvador Aveldano"
+  },
+  "description": "Build, format and visually QA Google Sheets from R with googlesheets4.",
+  "plugins": [
+    {
+      "name": "r-googlesheets4",
+      "source": "./",
+      "description": "Build, format and visually QA Google Sheets from R with googlesheets4 and the Sheets API v4."
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "name": "r-googlesheets4",
+  "version": "3.0.0",
+  "description": "Build, format and visually QA Google Sheets from R with googlesheets4 and the Sheets API v4.",
+  "author": {
+    "name": "Salvador Aveldano"
+  },
+  "homepage": "https://github.com/salvadoraveldano/r-googlesheets4",
+  "repository": "https://github.com/salvadoraveldano/r-googlesheets4",
+  "license": "MIT",
+  "keywords": [
+    "google-sheets",
+    "googlesheets4",
+    "r",
+    "tidyverse",
+    "spreadsheets"
+  ]
+}
