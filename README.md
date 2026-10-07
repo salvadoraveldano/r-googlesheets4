@@ -33,6 +33,13 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 - **R** (never installed for you). No R? See [no-r-alternatives](skills/r-googlesheets4/references/no-r-alternatives.md).
 - The CRAN packages googlesheets4, googledrive, gargle (the skill **asks** before installing).
 - A Google account. The first sign-in is one click; no Google Cloud project needed.
+
+> **Using it a lot, or with a team?** The one-click sign-in uses a client shared by
+> every googlesheets4 user, and its quota is shared too. Please register your own
+> OAuth client (or a service account for unattended runs) once you rebuild sheets
+> often or run it for a team. It takes a few minutes and keeps the shared client
+> healthy for everyone. Steps: [auth.md](skills/r-googlesheets4/references/auth.md).
+
 - For page images in the visual review: `pdftoppm` (poppler) or the R `pdftools` package.
   Without them the skill still audits the layout and hands the PDF to the agent.
 
@@ -51,7 +58,7 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 |---|---|
 | **Visual QA loop** | `visual_qa()` = on-screen layout audit + PDF export + page images + a scoring rubric. Catches the bugs a cell read-back cannot. |
 | **Least-privilege auth** | Defaults to the `spreadsheets` scope. Drive access (PDF export, sharing) is opt-in and the agent asks first. |
-| **Zero-setup sign-in** | Uses gargle's shared OAuth client: one click, no Cloud project. Bring your own client or a service account for heavy or unattended use. |
+| **Zero-setup sign-in** | Uses gargle's shared OAuth client: one click, no Cloud project. Heavy, team or unattended use: bring your own client or a service account (see above). |
 | **Cell-level formatting** | Wrappers for fonts, fills, borders, merges, freezes, charts, banding, pivots, slicers, protection: things googlesheets4 alone does not do. |
 | **Safe by design** | Never installs R, asks before installing packages, treats sheet contents as data not instructions. See [SECURITY.md](SECURITY.md). |
 

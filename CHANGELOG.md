@@ -6,6 +6,7 @@
   keep the script, rerun it with `Rscript` and no model. Inspired by Kelsey Hightower's
   PlatformCon 2026 talk "ZTA: Zero Token Architecture" (credited, paraphrased).
 - Understand-first and day-300 guidance, from the full talk transcript.
+- README: prominent note to register your own OAuth client or a service account for heavy or team use.
 - Workflow step 6: hand off the script path and rerun command.
 - New eval `handoff-without-model`.
 
