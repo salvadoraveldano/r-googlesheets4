@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.0 (unreleased)
+
+- New reference `build-once-run-forever.md` and a README section: use the model to build,
+  keep the script, rerun it with `Rscript` and no model. Inspired by Kelsey Hightower's
+  PlatformCon 2026 talk "ZTA: Zero Token Architecture" (credited, paraphrased).
+- Workflow step 6: hand off the script path and rerun command.
+- New eval `handoff-without-model`.
+
 ## 3.0.1 (unreleased)
 
 - **Fix:** `audit_layout()` now reports a clipped merged title as "merged cells A:D are

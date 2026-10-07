@@ -124,6 +124,16 @@
         "Keeps the key out of git and points to references/auth.md",
         "Does not start an interactive sign-in from cron"
       ]
+    },
+    {
+      "id": "handoff-without-model",
+      "prompt": "The monthly sheet is built and checked. My team will refresh it every month. We don't want to ask an AI each time. What do we do?",
+      "expected": [
+        "States the build script path and the exact rerun command (Rscript, with SHEET_ID to rebuild in place)",
+        "Says rerunning needs no model",
+        "Says changing the design still means editing the script, and does not claim it never needs a model",
+        "Mentions keeping the script in version control, with no secrets in it"
+      ]
     }
   ]
 }

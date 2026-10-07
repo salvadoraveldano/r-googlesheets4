@@ -55,6 +55,18 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 | **Cell-level formatting** | Wrappers for fonts, fills, borders, merges, freezes, charts, banding, pivots, slicers, protection: things googlesheets4 alone does not do. |
 | **Safe by design** | Never installs R, asks before installing packages, treats sheet contents as data not instructions. See [SECURITY.md](SECURITY.md). |
 
+## Build once, run without a model
+
+The agent builds the sheet by writing an R script. Keep that script and your team can
+rebuild or refresh the sheet with `Rscript`, on a schedule, with no model and no tokens.
+Use the model to design and change the sheet, not to run it every day. That matches the
+idea in Kelsey Hightower's PlatformCon 2026 talk
+[ZTA: Zero Token Architecture](https://www.youtube.com/watch?v=A7WFt2JQ5sg) (as
+summarized by others: infer once, export, run without inference). It also makes builds
+reproducible and reviewable in version control. Changing the design still takes an edit
+to the script. Details:
+[build-once-run-forever.md](skills/r-googlesheets4/references/build-once-run-forever.md).
+
 ## Why R (and when not)
 
 googlesheets4 + gargle give the shortest path from a data frame to a styled sheet,
@@ -76,6 +88,8 @@ This exists because of the R open-source community. Thank you to
 **Jennifer Bryan** and **Posit Software, PBC** for googlesheets4, googledrive and
 gargle (with **Craig Citro** and **Hadley Wickham** on gargle), and to everyone in
 the tidyverse and r-lib projects, including [rig](https://github.com/r-lib/rig).
+The "build once, run without a model" framing was inspired by Kelsey Hightower's talk
+linked above.
 Full notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License

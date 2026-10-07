@@ -4,7 +4,7 @@ description: "Builds, formats and visually checks Google Sheets from R with goog
 license: MIT
 compatibility: "Needs R (Rscript), the CRAN packages googlesheets4, googledrive and gargle, network access and a Google account. Never installs anything without asking the user first."
 metadata:
-  version: "3.0.1"
+  version: "3.1.0"
   homepage: "https://github.com/salvadoraveldano/r-googlesheets4"
 allowed-tools: Read Glob Grep Bash(bash *scripts/gs_setup.sh status*)
 ---
@@ -87,6 +87,10 @@ state other than `READY` appears. Build scripts call `gs_connect()` only, never
    [visual-review-rubric.md](references/visual-review-rubric.md). Fix the build
    script, rebuild, repeat (max 3 loops). Skipping this step ships sheets whose
    values are right and whose rendering is broken.
+6. **Hand off a script that runs without you.** Tell the user the script path and the
+   exact rerun command (`SHEET_ID=<id> Rscript build.R`), and that rerunning needs no
+   model. Changing the design still means editing the script
+   ([build-once-run-forever.md](references/build-once-run-forever.md)).
 
 ## Quick start
 
@@ -163,6 +167,7 @@ Read on demand.
 | Setup state machine, access levels | [setup-protocol.md](references/setup-protocol.md) |
 | Auth, scopes, service accounts, cron | [auth.md](references/auth.md) |
 | Visual QA rubric and fix loop | [visual-review-rubric.md](references/visual-review-rubric.md) |
+| Rerun without a model, hand-off | [build-once-run-forever.md](references/build-once-run-forever.md) |
 | Post-build cell audits | [qa-post-build.md](references/qa-post-build.md) |
 | Every helper, one line each | [helpers.md](references/helpers.md) |
 | Reading data | [reading.md](references/reading.md) |
@@ -226,3 +231,5 @@ Huge thanks to **Jennifer Bryan** and **Posit Software, PBC** for
 [gargle](https://gargle.r-lib.org) (with **Craig Citro** and **Hadley Wickham** for gargle),
 and to the [tidyverse](https://www.tidyverse.org) and r-lib contributors, including
 [rig](https://github.com/r-lib/rig). See `THIRD_PARTY_NOTICES.md` in the repository.
+The build-once, run-without-a-model idea was inspired by Kelsey Hightower's
+[Zero Token Architecture](https://www.youtube.com/watch?v=A7WFt2JQ5sg) talk.
