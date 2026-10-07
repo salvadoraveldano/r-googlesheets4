@@ -13,7 +13,7 @@ it like installed software and read it before you install it. This one is built 
 that you can:
 
 - **Least privilege.** The default access level requests only the Google
-  `spreadsheets` scope. Broader access (`drive.readonly` for PDF export, `drive`
+  `spreadsheets` scope. Broader access (`drive.readonly` for finding sheets by name, `drive`
   for sharing and moving files) is opt-in via `GS_SCOPE_LEVEL`, and the agent is
   told to ask you first.
 - **No silent installs.** The skill never installs R, runs a package manager, or

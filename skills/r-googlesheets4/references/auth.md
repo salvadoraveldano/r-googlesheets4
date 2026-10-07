@@ -141,7 +141,7 @@ it, and only after the user agrees.
 |---|---|---|
 | `sheets` (default) | `spreadsheets` | create, read, write, format sheets |
 | `readonly` | `spreadsheets.readonly` | read-only analysis |
-| `export` | `spreadsheets` + `drive.readonly` | PDF export for visual QA (if the default level cannot export), finding sheets by name |
+| `export` | `spreadsheets` + `drive.readonly` | finding sheets by name (PDF export for visual QA works at the default level) |
 | `drive` | `drive` | share, move, copy, delete files |
 
 Google classes `drive` and `drive.readonly` as *restricted* scopes, which is why

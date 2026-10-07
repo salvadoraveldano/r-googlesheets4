@@ -29,7 +29,7 @@ the task needs it, and only after the user agrees.
 |---|---|---|
 | `sheets` (default) | `spreadsheets` | create, read, write and format sheets |
 | `readonly` | `spreadsheets.readonly` | read-only analysis |
-| `export` | `spreadsheets` + `drive.readonly` | also PDF export for visual QA and finding sheets by name, if the default level cannot export |
+| `export` | `spreadsheets` + `drive.readonly` | finding sheets by name (PDF export for visual QA already works at the default level) |
 | `drive` | `drive` | also share, move, copy, delete files (`drive_share()`, etc.) |
 
 To change level: `GS_SCOPE_LEVEL=export bash scripts/gs_setup.sh auth <email>`, and

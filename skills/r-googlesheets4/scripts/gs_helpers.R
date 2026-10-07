@@ -518,7 +518,7 @@ batch_format <- function(ss, requests, strict = FALSE) {
 # (env GS_SCOPE_LEVEL) only when the task needs it, and only after the user agrees:
 #   sheets   spreadsheets                         read/write sheets (default)
 #   readonly spreadsheets.readonly                read only
-#   export   spreadsheets + drive.readonly        also PDF export, find sheets by name
+#   export   spreadsheets + drive.readonly        also find sheets by name
 #   drive    drive                                also share, move, copy, delete files
 GS_SCOPE_URL <- "https://www.googleapis.com/auth/"
 GS_SCOPE_LEVELS <- list(
