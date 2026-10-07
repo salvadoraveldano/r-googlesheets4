@@ -1,7 +1,7 @@
 {
   "name": "r-googlesheets4-marketplace",
   "owner": {
-    "name": "Salvador Aveldano"
+    "name": "Salvador Aveldaño Garcia"
   },
   "description": "Build, format and visually QA Google Sheets from R with googlesheets4.",
   "plugins": [

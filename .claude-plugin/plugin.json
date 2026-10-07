@@ -3,7 +3,7 @@
   "version": "3.1.0",
   "description": "Build, format and visually QA Google Sheets from R with googlesheets4 and the Sheets API v4.",
   "author": {
-    "name": "Salvador Aveldano"
+    "name": "Salvador Aveldaño Garcia"
   },
   "homepage": "https://github.com/salvadoraveldano/r-googlesheets4",
   "repository": "https://github.com/salvadoraveldano/r-googlesheets4",
