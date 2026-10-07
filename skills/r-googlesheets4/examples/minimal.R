@@ -19,7 +19,8 @@ source(file.path(SKILL, "scripts/gs_modern.R"))  # fmt_auto_resize_cols
 gs_connect(USER_EMAIL)
 
 # Create a sheet with one tab and some data
-ss <- gs4_create("Quick Demo — minimal.R", sheets = list(Summary = head(mtcars)))
+ss <- gs_open_or_create("Quick Demo — minimal.R", "Summary")
+sheet_write(head(mtcars), ss, sheet = "Summary")
 sid <- get_sheet_id(ss, "Summary")
 
 # Format: brand-blue bold header, frozen, gridlines off

@@ -42,7 +42,7 @@ build_dept <- function(dept) {
 
   # Create the spreadsheet — 3 tabs: dept summary + two raw-data tabs
   tabs <- c(dept, "People", "OPEX")
-  ss <- gs4_create(sprintf("%s — FY2026 Summary", dept), sheets = tabs)
+  ss <- gs_open_or_create(sprintf("%s — FY2026 Summary", dept), tabs)
   sheet_write(d_people, ss, sheet = "People")
   sheet_write(d_opex,   ss, sheet = "OPEX")
 

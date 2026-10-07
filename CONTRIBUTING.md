@@ -13,6 +13,9 @@ no hidden installs.
 4. Run the checks: `claude plugin validate --strict .` and `bash scripts/check.sh`
    (secret and branding scan).
 5. For a behavior change, add or update an eval in `skills/r-googlesheets4/evals/`.
+   Run evals as a dry run: give the model the skill and a scripted command output, and
+   ask for an action log (commands it would run plus the final message). Asking for a
+   full reasoning transcript can trip model safeguards.
 
 ## Style
 

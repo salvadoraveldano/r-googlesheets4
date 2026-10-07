@@ -55,4 +55,5 @@ One line per issue: `tab!range — what is wrong — fix`. End with a verdict:
 
 - The width estimate is approximate (Arial-like fonts). It is deliberately generous, so a flagged cell is worth a glance, but confirm on the page image before widening.
 - Fonts that are not web-safe render differently in the PDF export.
+- Report only what you saw. If you did not `Read()` a page image, say so; never describe it from the findings alone.
 - The PDF export endpoint rate-limits bursts (HTTP 429); `visual_qa()` pauses between tabs and retries.

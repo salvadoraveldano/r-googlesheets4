@@ -545,6 +545,23 @@ GS_SCRIPTS_DIR <- local({
 GS_SETUP_SH    <- paste("bash", shQuote(file.path(GS_SCRIPTS_DIR, "gs_setup.sh")))
 GS_USES_DRIVE  <- GS_SCOPE_LEVEL %in% c("export", "drive")
 
+#' Create the spreadsheet, or reuse it when SHEET_ID is set, so a fix-and-rebuild
+#' loop edits one file instead of leaving a new one in Drive each time.
+#' `tabs` is a character vector of tab names; missing tabs are added on reuse.
+#' Prints the id so it can be passed back as SHEET_ID=<id> on the next run.
+gs_open_or_create <- function(title, tabs, id = Sys.getenv("SHEET_ID", "")) {
+  if (!nzchar(id)) {
+    ss <- googlesheets4::gs4_create(title, sheets = tabs, timeZone = Sys.timezone())
+    message("[gs_open_or_create] created ", as.character(ss), "  (rebuild with SHEET_ID=", as.character(ss), ")")
+    return(ss)
+  }
+  ss <- googlesheets4::as_sheets_id(id)
+  have <- googlesheets4::sheet_names(ss)
+  for (t in setdiff(tabs, have)) googlesheets4::sheet_add(ss, sheet = t)
+  message("[gs_open_or_create] reusing ", id)
+  ss
+}
+
 #' Stop with the fix when a task needs more access than the current level.
 gs_require_level <- function(what, levels = "drive") {
   if (GS_SCOPE_LEVEL %in% levels) return(invisible(TRUE))

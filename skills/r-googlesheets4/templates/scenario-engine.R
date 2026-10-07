@@ -38,7 +38,7 @@ R <- list(
 )
 
 # ── Create the workbook ──
-ss <- gs4_create("Scenario Engine Demo", sheets = c(TAB_SD, TAB_DOWN))
+ss <- gs_open_or_create("Scenario Engine Demo", c(TAB_SD, TAB_DOWN))
 sid_sd   <- get_sheet_id(ss, TAB_SD)
 sid_down <- get_sheet_id(ss, TAB_DOWN)
 

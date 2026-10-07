@@ -83,6 +83,14 @@ audit_layout <- function(ss, sheet_name, max_wide_px = 400L, min_narrow_px = 40L
     }
     col_px[c]
   }
+  # first and last column (1-based) of the merge containing a cell
+  merge_cols <- function(r, c) {
+    for (m in .nz(sh$merges, list())) {
+      if (r > m$startRowIndex && r <= m$endRowIndex && c > m$startColumnIndex && c <= m$endColumnIndex)
+        return(c(m$startColumnIndex + 1L, m$endColumnIndex))
+    }
+    c(c, c)
+  }
 
   out <- list(); add <- function(f) out[[length(out) + 1L]] <<- f
   col_has_content <- rep(FALSE, length(cols))
@@ -121,7 +129,14 @@ audit_layout <- function(ss, sheet_name, max_wide_px = 400L, min_narrow_px = 40L
         nxt <- if (ci < length(vals)) vals[[ci + 1L]]$formattedValue else NULL
         # text overflows into empty neighbors, but clips against content, a CLIP
         # strategy, or a merge (merged cells never overflow)
-        if (merged || wrap == "CLIP" || (!is.null(nxt) && nzchar(nxt)))
+        if (merged) {
+          span <- merge_cols(ri, ci)
+          add(.finding(sheet_name, a1(ri, ci), "blocker",
+                       sprintf("text needs ~%d px, merged cells %s:%s are %d px wide and it is cut off",
+                               round(need), col_letter(span[1L]), col_letter(span[2L]), round(w)),
+                       sprintf("widen columns %s:%s by ~%d px in total, shorten the text, or wrap it",
+                               col_letter(span[1L]), col_letter(span[2L]), ceiling(need + 10 - w))))
+        } else if (wrap == "CLIP" || (!is.null(nxt) && nzchar(nxt)))
           add(.finding(sheet_name, a1(ri, ci), "blocker", sprintf("text needs ~%d px, column is %d px and is cut off", round(need), round(w)),
                        sprintf("widen col %s to ~%d px, shorten the text, or wrap it", col_letter(ci), ceiling(need + 10))))
       }

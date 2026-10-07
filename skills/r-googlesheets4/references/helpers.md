@@ -4,6 +4,7 @@ Every helper shipped in `scripts/`. Source order and the few that matter most ar
 
 | Helper                  | File              | What it does                                                      |
 |-------------------------|-------------------|-------------------------------------------------------------------|
+| `gs_open_or_create(title, tabs)` | gs_helpers.R | Create the sheet, or reuse the one in `SHEET_ID` (adds missing tabs). Use it so each rebuild edits one file instead of orphaning a new one |
 | `gs_connect()`          | gs_helpers.R      | Auth googlesheets4 + googledrive from the login saved by `gs_setup.sh` (arg → `GS_EMAIL` → config file); fails fast with the fix command, never opens a browser |
 | `hex_to_color()`        | gs_helpers.R      | Hex string → API 0-1 float RGB color                              |
 | `grid_range()`          | gs_helpers.R      | 1-based row/col → 0-based GridRange                               |

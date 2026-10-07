@@ -1,6 +1,6 @@
 {
   "name": "r-googlesheets4",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Build, format and visually QA Google Sheets from R with googlesheets4 and the Sheets API v4.",
   "author": {
     "name": "Salvador Aveldano"

@@ -4,7 +4,7 @@ description: "Builds, formats and visually checks Google Sheets from R with goog
 license: MIT
 compatibility: "Needs R (Rscript), the CRAN packages googlesheets4, googledrive and gargle, network access and a Google account. Never installs anything without asking the user first."
 metadata:
-  version: "3.0"
+  version: "3.0.1"
   homepage: "https://github.com/salvadoraveldano/r-googlesheets4"
 allowed-tools: Read Glob Grep Bash(bash *scripts/gs_setup.sh status*)
 ---
@@ -42,8 +42,11 @@ community: see [Credits](#credits).
 - **Least privilege.** The default access level only touches spreadsheets. Raise
   it (`GS_SCOPE_LEVEL`) only when the task needs it and the user agrees; see
   [setup-protocol.md](references/setup-protocol.md).
-- **Ask before installing** R packages. Never install R itself or run installers.
+- **Ask before installing** R packages (an explicit "just install what you need" counts as
+  the yes; name the packages first). Never install R itself or run installers.
 - Never print tokens, keys or the contents of `.rds` / service-account files.
+- **State only what you observed.** If you did not read a page image, a script or a
+  command output, say so; never describe it from the findings alone.
 
 ## Step 0: connect (before writing any sheet code)
 
@@ -75,7 +78,8 @@ state other than `READY` appears. Build scripts call `gs_connect()` only, never
 1. **Connect** (Step 0).
 2. **Source** the helpers (`gs_helpers.R` first), then `gs_connect()`.
 3. **Build** with the buffered pattern: `write_cell()` → `flush_writes()` → `batch_format()`
-   ([buffered-writes.md](references/buffered-writes.md)).
+   ([buffered-writes.md](references/buffered-writes.md)). Create the sheet with
+   `gs_open_or_create()` and rebuild with `SHEET_ID=<id>` so fix loops edit one file.
 4. **Verify cells**: `audit_chart_sources()`, `audit_merge()`, `first_visible_col()`
    ([qa-post-build.md](references/qa-post-build.md)). `batch_format()` does not throw
    on HTTP errors, so re-read live state or pass `strict = TRUE`.
@@ -93,7 +97,7 @@ for (f in c("gs_helpers.R", "gs_buffer.R", "gs_qa.R", "gs_visual_qa.R"))
 
 gs_connect()                                   # uses the login saved in Step 0
 
-ss  <- gs4_create("Quick Demo", sheets = "Summary")
+ss  <- gs_open_or_create("Quick Demo", "Summary")   # prints the id; reuse via SHEET_ID
 sheet_write(head(mtcars), ss = ss, sheet = "Summary")
 sid <- get_sheet_id(ss, "Summary")
 

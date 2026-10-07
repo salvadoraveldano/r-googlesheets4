@@ -34,8 +34,7 @@ revenue_df <- tibble(
 )
 
 # ── Create the workbook ──
-ss <- gs4_create("Multi-Tab Report Demo",
-                 sheets = c("Cover", "People", "OPEX", "Revenue"))
+ss <- gs_open_or_create("Multi-Tab Report Demo", c("Cover", "People", "OPEX", "Revenue"))
 
 # Bulk write data tabs
 sheet_write(people_df,  ss, sheet = "People")

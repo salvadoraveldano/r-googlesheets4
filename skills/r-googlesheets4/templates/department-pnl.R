@@ -38,7 +38,7 @@ dept_revenue <- revenue_df %>% filter(department == DEPT)
 
 # ── Create the spreadsheet ──
 tab_names <- c(DEPT, "People", "OPEX", "Revenue")
-ss <- gs4_create(sprintf("%s — FY2026 Summary", DEPT), sheets = tab_names)
+ss <- gs_open_or_create(sprintf("%s — FY2026 Summary", DEPT), tab_names)
 
 # Bulk write raw-data tabs
 sheet_write(dept_people,  ss, sheet = "People")
