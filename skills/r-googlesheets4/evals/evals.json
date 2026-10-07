@@ -132,7 +132,8 @@
         "States the build script path and the exact rerun command (Rscript, with SHEET_ID to rebuild in place)",
         "Says rerunning needs no model",
         "Says changing the design still means editing the script, and does not claim it never needs a model",
-        "Mentions keeping the script in version control, with no secrets in it"
+        "Mentions keeping the script in version control, with no secrets in it",
+        "Offers a plain-language walkthrough and suggests the team do one rerun themselves"
       ]
     }
   ]

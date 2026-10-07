@@ -87,10 +87,14 @@ state other than `READY` appears. Build scripts call `gs_connect()` only, never
    [visual-review-rubric.md](references/visual-review-rubric.md). Fix the build
    script, rebuild, repeat (max 3 loops). Skipping this step ships sheets whose
    values are right and whose rendering is broken.
-6. **Hand off a script that runs without you.** Tell the user the script path and the
-   exact rerun command (`SHEET_ID=<id> Rscript build.R`), and that rerunning needs no
-   model. Changing the design still means editing the script
-   ([build-once-run-forever.md](references/build-once-run-forever.md)).
+6. **Hand off a script that runs without you.** Tell the user:
+   - the script path and the exact rerun command (`SHEET_ID=<id> Rscript build.R`), and
+     that rerunning needs no model;
+   - to keep the script in version control, with no secrets in it;
+   - a plain-language walkthrough of what it does and where the key formulas live
+     (offer one if you have not read the script), and to do one rerun themselves first;
+   - that changing the design still means editing the script
+     ([build-once-run-forever.md](references/build-once-run-forever.md)).
 
 ## Quick start
 

@@ -61,10 +61,10 @@ The agent builds the sheet by writing an R script. Keep that script and your tea
 rebuild or refresh the sheet with `Rscript`, on a schedule, with no model and no tokens.
 Use the model to design and change the sheet, not to run it every day. That matches the
 idea in Kelsey Hightower's PlatformCon 2026 talk
-[ZTA: Zero Token Architecture](https://www.youtube.com/watch?v=A7WFt2JQ5sg) (as
-summarized by others: infer once, export, run without inference). It also makes builds
-reproducible and reviewable in version control. Changing the design still takes an edit
-to the script. Details:
+[ZTA: Zero Token Architecture](https://www.youtube.com/watch?v=A7WFt2JQ5sg)
+("Infer once, export, and run without inference"). It also makes builds reproducible and
+reviewable in version control, and a team that understands what it ships can maintain it
+without a model. Changing the design still takes an edit to the script. Details:
 [build-once-run-forever.md](skills/r-googlesheets4/references/build-once-run-forever.md).
 
 ## Why R (and when not)
