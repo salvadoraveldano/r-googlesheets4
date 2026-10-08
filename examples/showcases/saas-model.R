@@ -13,7 +13,8 @@
 #              Rscript examples/showcases/saas-model.R
 #          (leave SHEET_ID unset to create a new file; the id is printed.
 #          Safety: a rerun clears the 8 tabs of that file, so gs_open_or_create() stops before
-#          changing anything when SHEET_ID is a file with another title that lacks these tabs.)
+#          changing anything when SHEET_ID is a file with another title that lacks these tabs,
+#          or with a locale other than en_US.)
 # Reads    Nothing external. All data is synthetic and generated here (set.seed).
 # Access   Default 'sheets' level (spreadsheets scope only). No Drive calls, no
 #          sharing, no installs. Needs the login saved by scripts/gs_setup.sh.
@@ -155,18 +156,15 @@ CHART_STYLE <- list(font = FONT, title_size = 13, title_bold = TRUE, title_color
 
 # -- Connect, create or reuse the sheet, reset it -------------------------------
 gs_connect(USER_EMAIL)
-# gs_open_or_create() refuses a SHEET_ID that is another file, but does not check the locale (set only at creation).
-if (nzchar(Sys.getenv("SHEET_ID", "")))
-  stopifnot("SHEET_ID must point at an en_US file (locale is only set when the file is created)" =
-              identical(googlesheets4::gs4_get(googlesheets4::as_sheets_id(Sys.getenv("SHEET_ID")))$locale, "en_US"))
+# On a reused SHEET_ID, gs_open_or_create() stops before any change if the title/tabs or the locale do not match.
 ss <- gs_open_or_create(SHEET_TITLE, unname(TAB),
-                        time_zone = "Etc/GMT", locale = "en_US",       # create-only: neutral zone for a public file, en_US so TEXT() and dates read as expected
+                        time_zone = "Etc/GMT", locale = "en_US",       # zone: create only, neutral for a public file; locale: en_US so TEXT() and dates read as expected (set on create, checked on reuse)
                         rows = setNames(vapply(GRID, `[`, 0, 1L), TAB[names(GRID)]),
                         cols = setNames(vapply(GRID, `[`, 0, 2L), TAB[names(GRID)]))
 ss_id <- as.character(ss)
 props <- googlesheets4::sheet_properties(ss)
 sid   <- setNames(as.numeric(props$id[match(TAB, props$name)]), names(TAB))
-batch_format(ss, fmt_tab_order(ss, unname(TAB)), strict = TRUE)         # tab order = the order of TAB
+batch_format(ss, fmt_tab_order(NULL, unname(sid)), strict = TRUE)       # tab order = the order of TAB
 gs_reset_tabs(ss, tabs = unname(TAB))                                   # rebuild in place: charts, names, protections, rules, merges, values, formats
 
 # Named ranges must exist BEFORE any formula that uses them is written (else #NAME?).
@@ -1087,9 +1085,7 @@ batch_format(ss, list(
 # 4. POST-BUILD QA (cells; the visual pass is run separately with visual_qa())
 # =============================================================================
 Sys.sleep(3)
-meta <- gargle::response_process(googlesheets4::request_make(googlesheets4::request_generate("sheets.spreadsheets.get",
-  params = list(spreadsheetId = ss_id, fields = "sheets(properties(title),charts(chartId))"))))
-n_ch <- vapply(meta$sheets, function(s) length(s$charts), integer(1)); names(n_ch) <- vapply(meta$sheets, function(s) s$properties$title, "")
+cnt <- gs_count_objects(ss_id); n_ch <- setNames(cnt$charts, cnt$tab)
 stopifnot("chart count per tab (a rerun must not stack charts)" =              # also catches a chart that failed to land
             identical(n_ch[TAB], setNames(c(3L, 0L, 0L, 1L, 1L, 0L, 0L, 0L), TAB)))
 props <- googlesheets4::sheet_properties(ss)

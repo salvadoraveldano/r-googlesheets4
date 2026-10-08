@@ -15,7 +15,8 @@
 # Rerun      SHEET_ID=<id> GS_SKILL_DIR=<path to skills/r-googlesheets4> Rscript examples/showcases/personal-finance.R
 #            (rebuilds your sample sheet in place: the six tabs below are cleared and rebuilt, nothing piles up.
 #             Safety: gs_open_or_create() stops before changing anything when the file's title is not
-#             SHEET_TITLE below and the file lacks these tabs, so a wrong id is refused.)
+#             SHEET_TITLE below and the file lacks these tabs, or when its locale is not the one below,
+#             so a wrong id is refused.)
 #
 # Built with the r-googlesheets4 skill (https://github.com/salvadoraveldano/r-googlesheets4),
 # on googlesheets4 by Jennifer Bryan and Posit (https://googlesheets4.tidyverse.org).
@@ -72,18 +73,6 @@ NF_MONTH_LONG <- list(type = "DATE", pattern = "mmmm yyyy")
 NF_MONTH      <- list(type = "DATE", pattern = "mmm yyyy")
 NF_DAY        <- list(type = "DATE", pattern = "mmm d, yyyy")
 
-# Request collector: gathers the fmt_* requests of one tab per batch. b$cf(fmt_cond_*, ...) passes
-# index = the next priority, so the FIRST rule listed wins (the helpers' default index 0 means the last rule
-# added wins). The counter restarts per batch and every batch below is one tab, because rule indices are per sheet.
-batch <- function() {
-  items <- list(); n_cf <- 0L
-  list(push = function(x) { if (!is.null(names(x))) x <- list(x); items <<- c(items, x); invisible() },
-       cf   = function(f, ...) { items <<- c(items, list(f(..., index = n_cf))); n_cf <<- n_cf + 1L; invisible() },
-       get  = function() items)
-}
-widths <- function(sid, ws, start = 1L) {   # one request per column width
-  lapply(seq_along(ws), function(i) fmt_col_width(sid, start + i - 1L, start + i - 1L, ws[[i]]))
-}
 GOOD <- list(fg = hex_to_color("0F6B3A"), bg = hex_to_color("D9F2E3"))
 WARN <- list(fg = hex_to_color("8A5A00"), bg = hex_to_color("FEEFC8"))
 BAD  <- list(fg = hex_to_color("9B1C1C"), bg = hex_to_color("FBD5D5"))
@@ -175,7 +164,8 @@ nw$StudentLoan <- round(17600 - 240 * (seq_len(N_MONTHS) - 1))
 # -- Workbook: create or reuse, then start from clean tabs ---------------------
 # On a rerun gs_open_or_create() refuses a wrong SHEET_ID before it changes anything; gs_reset_tabs() then
 # clears only the tabs named. The sample holds dates only (no clock times), so a neutral time zone changes no
-# value and does not travel with every copy. time_zone and locale apply on create; a reused file keeps its own.
+# value and does not travel with every copy. time_zone applies on create (a reused file keeps its own); locale
+# applies on create too, and a reused file with another locale is refused.
 ss <- gs_open_or_create(SHEET_TITLE, TABS, time_zone = "Etc/GMT", locale = "en_US")
 gs_reset_tabs(ss, tabs = TABS)   # charts, banding, protection, filters, pivots, names, rules: nothing piles up; sheetIds stay
 sid <- sapply(TABS, function(t) get_sheet_id(ss, t))
@@ -436,9 +426,9 @@ input_cells <- function(b, sid, r1, r2, c1, c2, ...) {
 }
 
 # ---- Lists ----
-b <- batch()
+b <- new_batch()
 b$push(body_all(S_LST, 40, 14)); title_rows(b, S_LST, 12)
-b$push(c(widths(S_LST, c(16, 140, 24, 130, 80, 24, 120, 24, 90, 24, 130, 160), 1)))
+b$push(fmt_col_widths(S_LST, c(16, 140, 24, 130, 80, 24, 120, 24, 90, 24, 130, 160)))
 header_row(b, S_LST, 4, 2, 2); header_row(b, S_LST, 4, 4, 5); header_row(b, S_LST, 4, 7, 7)
 header_row(b, S_LST, 4, 9, 9); header_row(b, S_LST, 4, 11, 12)
 b$push(fmt_cells(S_LST, 4, 4, 2, 12, halign = "LEFT"))
@@ -454,9 +444,9 @@ b$push(fmt_gridlines(S_LST, show = TRUE))
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Transactions ----
-b <- batch()
+b <- new_batch()
 b$push(body_all(S_TXN, LAST_ROW, 10)); title_rows(b, S_TXN, 8)
-b$push(widths(S_TXN, c(16, 110, 200, 120, 110, 100, 90, 100), 1))
+b$push(fmt_col_widths(S_TXN, c(16, 110, 200, 120, 110, 100, 90, 100)))
 header_row(b, S_TXN, 4, 2, 8, h = 30L)
 b$push(fmt_cells(S_TXN, 5, LAST_ROW, 2, 2, numfmt = NF_DAY, halign = "LEFT"))
 b$push(fmt_cells(S_TXN, 5, LAST_ROW, 3, 5, halign = "LEFT"))
@@ -470,9 +460,9 @@ b$push(fmt_freeze(S_TXN, rows = 4)); b$push(fmt_gridlines(S_TXN, show = TRUE))
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Budget ----
-b <- batch()
+b <- new_batch()
 b$push(body_all(S_BUD, 55, 12)); title_rows(b, S_BUD, 9)
-b$push(widths(S_BUD, c(16, 170, 110, 110, 110, 100, 80, 190, 120, 16), 1))
+b$push(fmt_col_widths(S_BUD, c(16, 170, 110, 110, 110, 100, 80, 190, 120, 16)))
 header_row(b, S_BUD, 5, 2, 9, h = 32L)
 b$push(fmt_cells(S_BUD, 5, 5, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_BUD, 5, 5, 3, 7, halign = "RIGHT"))
 # tight rows so the first printed landscape page ends after the top-5 chart-data block (no orphaned "Everything else" row on page 2)
@@ -531,9 +521,9 @@ b$push(fmt_freeze(S_BUD, rows = 5)); b$push(fmt_gridlines(S_BUD, show = FALSE))
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Net Worth ----
-b <- batch()
+b <- new_batch()
 b$push(body_all(S_NW, 45, 17)); title_rows(b, S_NW, 14)
-b$push(widths(S_NW, c(16, 96, 98, 98, 104, 104, 108, 96, 90, 96, 112, 112, 112, 84, 96, 16), 1))
+b$push(fmt_col_widths(S_NW, c(16, 96, 98, 98, 104, 104, 108, 96, 90, 96, 112, 112, 112, 84, 96, 16)))
 for (g in list(list(3, 7, PAL[["teal"]], COL_WHITE), list(8, 11, PAL[["amber"]], COL_INK), list(12, 14, PAL[["blue"]], COL_WHITE))) {
   b$push(fmt_merge(S_NW, 4, 4, g[[1]], g[[2]]))
   b$push(fmt_cells(S_NW, 4, 4, g[[1]], g[[2]], font_size = 10, bold = TRUE, font_color = g[[4]], bg_color = hex_to_color(g[[3]]), halign = "CENTER", valign = "MIDDLE"))
@@ -560,9 +550,9 @@ b$push(fmt_freeze(S_NW, rows = 5)); b$push(fmt_gridlines(S_NW, show = FALSE))
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Trends ----
-b <- batch()
+b <- new_batch()
 b$push(body_all(S_TRD, 45, 17)); title_rows(b, S_TRD, 14)
-b$push(widths(S_TRD, c(16, 128, rep(80, 12), 104, 16), 1))      # C..N months, O = Grand Total
+b$push(fmt_col_widths(S_TRD, c(16, 128, rep(80, 12), 104, 16)))      # C..N months, O = Grand Total
 header_row(b, S_TRD, 5, 2, 7)
 b$push(fmt_cells(S_TRD, 5, 5, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_TRD, 5, 5, 3, 6, halign = "RIGHT")); b$push(fmt_cells(S_TRD, 5, 5, 7, 7, halign = "LEFT"))
 b$push(fmt_row_height(S_TRD, 4, 4, 10L)); b$push(fmt_row_height(S_TRD, 20, 21, 10L)); b$push(fmt_row_height(S_TRD, 23, 23, 22L))
@@ -585,9 +575,9 @@ batch_format(ss, b$get(), strict = TRUE)
 # ---- Dashboard ----
 R <- list(top = 1, title = 2, sub = 3, gap1 = 4, kl = 5, kv = 6, ks = 7, gap2 = 8, hh = 9, hn = 10, hp = 11,
           gap3 = 12, c1 = 13, c1e = 27, gap4 = 28, c2 = 29, c2e = 43, gap5 = 44)
-b <- batch(); sd <- S_DASH
+b <- new_batch(); sd <- S_DASH
 b$push(body_all(sd, 60, 20))
-b$push(c(list(fmt_col_width(sd, 1, 1, 16L)), list(fmt_col_width(sd, 2, 19, 60L)), list(fmt_col_width(sd, 20, 20, 16L))))
+b$push(fmt_col_widths(sd, c(16, rep(60, 18), 16)))
 for (rh in list(c(1, 1, 8), c(2, 2, 46), c(3, 3, 22), c(4, 4, 10), c(5, 5, 20), c(6, 6, 46), c(7, 7, 22), c(8, 8, 14),
                 c(9, 9, 26), c(10, 10, 22), c(11, 11, 34), c(12, 12, 14), c(13, 27, 21), c(28, 28, 14), c(29, 43, 21), c(44, 44, 14),
                 c(45, 45, 28), c(46, 46, 24), c(47, 52, 30), c(53, 53, 40), c(54, 60, 21)))
@@ -681,23 +671,23 @@ batch_format(ss, b$get(), strict = TRUE)
 # Conditional formatting (own batch per tab so one bad rule cannot sink the rest)
 # =============================================================================
 # b$cf() numbers the rules in listing order, so the first rule that matches wins.
-b <- batch()
+b <- new_batch()
 # A custom formula cannot name another tab, so the one threshold is read with INDIRECT: legend, bars, status and strip never drift.
 WARN_REF <- 'INDIRECT("Budget!$C$21")'
 for (rule in list(list(sprintf('=OR(B$11="%s",AND(ISNUMBER(B$11),B$11>1))', NO_BUD), BAD), list(paste0("=AND(ISNUMBER(B$11),B$11>=", WARN_REF, ")"), WARN), list("=ISNUMBER(B$11)", GOOD)))
   b$cf(fmt_cond_formula, S_DASH, 10, 11, 2, 19, rule[[1]], font_color = rule[[2]]$fg, bg_color = rule[[2]]$bg)
-text_rule <- function(r, cc, op, text, color) b$cf(fmt_cond_text, S_DASH, r, r, cc, cc, op = op, text = text, font_color = color$fg, bold = TRUE)
-for (cc in c(2, 8, 14)) { text_rule(7, cc, "starts_with", "▲", GOOD); text_rule(7, cc, "starts_with", "▼", BAD) }   # up is good: income, savings, net worth
-text_rule(7, 5, "starts_with", "▲", BAD); text_rule(7, 5, "starts_with", "▼", GOOD)                              # spending up is bad
-text_rule(7, 11, "contains", "on track", GOOD); text_rule(7, 11, "contains", "below goal", BAD)
+text_rule <- function(b, r, cc, op, text, color) b$cf(fmt_cond_text, S_DASH, r, r, cc, cc, op = op, text = text, font_color = color$fg, bold = TRUE)
+for (cc in c(2, 8, 14)) { text_rule(b, 7, cc, "starts_with", "▲", GOOD); text_rule(b, 7, cc, "starts_with", "▼", BAD) }   # up is good: income, savings, net worth
+text_rule(b, 7, 5, "starts_with", "▲", BAD); text_rule(b, 7, 5, "starts_with", "▼", GOOD)                              # spending up is bad
+text_rule(b, 7, 11, "contains", "on track", GOOD); text_rule(b, 7, 11, "contains", "below goal", BAD)
 b$cf(fmt_cond_formula, S_DASH, 7, 7, 17, 17, "=$Q$6>1", font_color = BAD$fg, bold = TRUE)
 b$cf(fmt_cond_formula, S_DASH, 7, 7, 17, 17, paste0("=$Q$6>=", WARN_REF), font_color = WARN$fg, bold = TRUE)
 b$cf(fmt_cond_formula, S_DASH, 7, 7, 17, 17, paste0("=$Q$6<", WARN_REF), font_color = GOOD$fg, bold = TRUE)
-text_rule(R_TOP, 17, "starts_with", "✓", GOOD); text_rule(R_TOP, 17, "starts_with", "⚠", BAD)
+text_rule(b, R_TOP, 17, "starts_with", "✓", GOOD); text_rule(b, R_TOP, 17, "starts_with", "⚠", BAD)
 b$cf(fmt_cond_number, S_DASH, 6, 6, 8, 8, 0, "less", font_color = BAD$fg)
 batch_format(ss, b$get(), strict = TRUE)
 
-b <- batch()
+b <- new_batch()
 for (rg in list(c(6, 15, 5, 6), c(18, 19, 5, 6), c(20, 20, 5, 5))) {
   b$cf(fmt_cond_number, S_BUD, rg[1], rg[2], rg[3], rg[4], 0, "less", font_color = BAD$fg, bg_color = BAD$bg, bold = TRUE)
   b$cf(fmt_cond_number, S_BUD, rg[1], rg[2], rg[3], rg[4], 0, "greater_eq", font_color = GOOD$fg, bg_color = GOOD$bg)
@@ -710,18 +700,18 @@ for (ok in c("OK", "All pass")) b$cf(fmt_cond_text_equals, S_BUD, 46, 50, 7, 7, 
 for (no in c("Check", "Review")) b$cf(fmt_cond_text_equals, S_BUD, 46, 50, 7, 7, no, font_color = BAD$fg, bg_color = BAD$bg)
 batch_format(ss, b$get(), strict = TRUE)
 
-b <- batch()
+b <- new_batch()
 b$cf(fmt_cond_number, S_NW, 7, 17, 13, 14, 0, "less", font_color = BAD$fg)
 b$cf(fmt_cond_number, S_NW, 7, 17, 13, 14, 0, "greater_eq", font_color = GOOD$fg)
 b$cf(fmt_cond_formula, S_NW, 6, 17, 2, 15, '=RIGHT($O6,1)="●"', bg_color = hex_to_color("EAF1FF"))
 batch_format(ss, b$get(), strict = TRUE)
 
-b <- batch()
+b <- new_batch()
 b$cf(fmt_cond_formula, S_TRD, 6, 17, 2, 7, '=RIGHT($G6,1)="●"', bg_color = hex_to_color("EAF1FF"))
 b$cf(fmt_cond_number, S_TRD, 6, 17, 5, 5, 0, "less", font_color = BAD$fg, bold = TRUE)
 batch_format(ss, b$get(), strict = TRUE)
 
-b <- batch()
+b <- new_batch()
 b$cf(fmt_cond_formula, S_TXN, 5, LAST_ROW, 7, 7,                     # first, so it wins: Type must match the category's kind (Lists)
           '=AND($D5<>"",$G5<>"",$G5<>IFERROR(VLOOKUP($D5,INDIRECT("Lists!$D$5:$E$16"),2,FALSE),$G5))', font_color = BAD$fg, bg_color = BAD$bg, bold = TRUE)
 b$cf(fmt_cond_text_equals, S_TXN, 5, LAST_ROW, 7, 7, "Income", font_color = GOOD$fg, bold = TRUE)
@@ -731,7 +721,7 @@ batch_format(ss, b$get(), strict = TRUE)
 # =============================================================================
 # Dropdowns, filter, banding
 # =============================================================================
-b <- batch()
+b <- new_batch()
 b$push(fmt_dropdown_range(S_DASH, 2, 2, 17, 17, "=Lists!$B$5:$B$16"))
 b$push(fmt_validation(S_LST, 5, 5, 2, 2, "CUSTOM_FORMULA", "=AND(ISNUMBER(B5),DAY(B5)=1)",
                       input_message = "Type the first day of the first month, for example 2025-10-01. The other eleven months follow."))
@@ -739,7 +729,7 @@ b$push(fmt_validation(S_BUD, 6, 14, 3, 3, "NUMBER_GREATER_THAN_EQ", 0,
                       input_message = "Enter a monthly budget of 0 or more. A category with a 0 budget shows as 'no budget' when you spend in it."))
 batch_format(ss, b$get(), strict = TRUE)
 
-b <- batch()
+b <- new_batch()
 b$push(fmt_dropdown_range(S_TXN, 5, LAST_ROW, 4, 4, "=Lists!$D$5:$D$16"))
 b$push(fmt_dropdown_range(S_TXN, 5, LAST_ROW, 5, 5, "=Lists!$G$5:$G$7"))
 b$push(fmt_dropdown_range(S_TXN, 5, LAST_ROW, 7, 7, "=Lists!$I$5:$I$6"))
@@ -844,7 +834,7 @@ if (is.na(r_first) || r_last - r_first + 1L != length(CAT_EXP))
   stop("The Trends pivot does not list the ", length(CAT_EXP), " expense categories in one block (found rows ",
        r_first, " to ", r_last, " of the pivot).", call. = FALSE)
 PIV_BODY <- c(PIV_R + r_first - 1L, PIV_R + r_last - 1L, 3L, 2L + N_MONTHS + 1L)   # rows, cols C..O
-b <- batch()
+b <- new_batch()
 b$push(fmt_cells(S_TRD, PIV_R, PIV_R + r_first - 2L, 2, 15, bold = TRUE, italic = FALSE, font_color = COL_INK, bg_color = COL_BRAND_SUBTLE, halign = "RIGHT"))   # italic = FALSE: Sheets italicises the pivot's own labels
 b$push(fmt_cells(S_TRD, PIV_R, PIV_R + r_first - 2L, 2, 2, halign = "LEFT"))
 b$push(fmt_cells(S_TRD, PIV_BODY[1], PIV_R + r_last, 2, 2, bold = TRUE, halign = "LEFT"))
@@ -890,9 +880,8 @@ bad <- unlist(Map(function(tab, m) {
   if (length(hit)) paste0(tab, ": ", paste(unique(hit), collapse = ", ")) else NULL
 }, TABS, vals))
 if (length(bad)) stop("Error values found: ", paste(bad, collapse = " | "), call. = FALSE)
-meta <- gargle::response_process(request_make(request_generate("sheets.spreadsheets.get",
-  params = list(spreadsheetId = as.character(ss), fields = "sheets(properties(title),charts(chartId))"))))
-n_ch <- vapply(meta$sheets, function(s) length(s$charts), integer(1)); names(n_ch) <- vapply(meta$sheets, function(s) s$properties$title, "")
+cnt <- gs_count_objects(ss)
+n_ch <- setNames(cnt$charts, cnt$tab)
 stopifnot(n_ch[[T_DASH]] == 4L, n_ch[[T_NW]] == 2L, n_ch[[T_TRD]] == 1L)
 chk_now <- t(read_values(ss, sprintf("'%s'!F46:G50", T_BUD))[[1]])        # the sheet's own self-checks must pass on a fresh build
 message("[personal-finance] self-checks on the Budget tab: ", paste(chk_now, collapse = " "))

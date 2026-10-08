@@ -15,7 +15,7 @@
 # Rerun (rebuilds that same file in place; needs no model; run from the repo root):
 #   SHEET_ID=<id> GS_SKILL_DIR=<repo>/skills/r-googlesheets4 Rscript examples/showcases/ops-command-center.R
 #   Safety: a rerun clears the five tabs of that file, so gs_open_or_create() first checks that its title is exactly SHEET_TITLE
-#   (or that it already has all five tabs, as a copy of the sample does) and stops otherwise.
+#   (or that it already has all five tabs, as a copy of the sample does) and that its locale is en_US, and stops otherwise.
 # Optional: QA_DIR=<folder> also exports every tab as PDF/PNG pages for a visual check.
 # At the end the script reads the live sheet back and stops if any formula disagrees with the R reference.
 #
@@ -202,19 +202,14 @@ NF_HRS  <- list(type = "NUMBER", pattern = '#,##0" h"')
 
 # ── Connect and create/open the sheet ────────────────────────────────────────
 gs_connect(USER_EMAIL)
-# gs_open_or_create() stops before changing anything if SHEET_ID is neither a file titled SHEET_TITLE nor one with all TABS.
-# en_US: number/date parsing and TEXT() formats assume it. Etc/GMT: a neutral zone, so copies of the file do not carry the author's region
-# (all dates here are date-only and nothing uses TODAY() or NOW(), so no value shifts).
+# gs_open_or_create() stops before changing anything if SHEET_ID is neither a file titled SHEET_TITLE nor one with all TABS,
+# or if that file's locale is not en_US (number/date parsing and TEXT() formats assume it).
+# A new file gets en_US and Etc/GMT, a neutral zone, so copies of the file do not carry the author's region. A reused file keeps its
+# own zone: all dates here are date-only and nothing uses TODAY() or NOW(), so no value depends on it.
 ss <- gs_open_or_create(SHEET_TITLE, TABS, time_zone = "Etc/GMT", locale = "en_US")
 ss_id <- as.character(ss)
 cat("SHEET_ID=", ss_id, "\n", sep = "")
-# gs_open_or_create() sets locale and time zone only when it creates the file; a reused file is brought in line here
-# (the skill has no helper for spreadsheet properties, so a raw updateSpreadsheetProperties request).
-props <- googlesheets4::gs4_get(ss)
-if (!identical(props$locale, "en_US") || !identical(props$time_zone, "Etc/GMT"))
-  batch_format(ss, list(list(updateSpreadsheetProperties = list(properties = list(locale = "en_US", timeZone = "Etc/GMT"),
-                                                               fields = "locale,timeZone"))), strict = TRUE)
-gs_reset_tabs(ss, TABS)                                 # rebuilding in place must not stack charts, rules, protections or filter views; only our tabs
+gs_reset_tabs(ss, TABS)                               # rebuilding in place must not stack charts, rules, protections or filter views; only our tabs
 sid_cc <- get_sheet_id(ss, TAB_CC); sid_t <- get_sheet_id(ss, TAB_TASKS); sid_tl <- get_sheet_id(ss, TAB_TL)
 sid_wl <- get_sheet_id(ss, TAB_WL); sid_l <- get_sheet_id(ss, TAB_LISTS)
 
@@ -444,13 +439,11 @@ section_bar <- function(sid, r, c1, c2)
 input_cell <- function(sid, r1, r2, c1, c2, ...) fmt_cells(sid, r1, r2, c1, c2, font_color = C_INPUT, bg_color = C_INPUT_BG, ...)
 fixed_cell <- function(sid, r1, r2, c1, c2, ...) fmt_cells(sid, r1, r2, c1, c2, font_color = C_GREY_FG, bg_color = C_GREY_BG, ...)
 thin <- list(style = "SOLID", color = C_GRID)
-# fmt_col_width() sets one column range at a time: this applies a whole vector of widths.
-widths <- function(sid, w, start = 1L) lapply(seq_along(w), function(i) fmt_col_width(sid, start + i - 1L, start + i - 1L, w[i]))
 
 # ---- Lists -------------------------------------------------------------------
 fmt_lists <- function(sid) {
   c(list(fmt_gridlines(sid, TRUE), fmt_freeze(sid, rows = 2L), fmt_tab_color(sid, hex_to_color("9AA5B8"))),
-    widths(sid, c(215, 130, 130, 150, 130, 150, 100, 100, 30, 100, 80, 90, 120)),
+    fmt_col_widths(sid, c(215, 130, 130, 150, 130, 150, 100, 100, 30, 100, 80, 90, 120)),
     list(body_fmt(sid, 60L, 13), title_fmt(sid, 1, 1), sub_fmt(sid, 2, 1), fmt_row_height(sid, 1, 1, 34L)),
     section_bar(sid, 4, 1, 6), section_bar(sid, 10, 1, 6), section_bar(sid, 21, 1, 13), section_bar(sid, LW_BAR, 1, 6),
     section_bar(sid, WLD_BAR, 1, 6),
@@ -493,26 +486,9 @@ fmt_lists <- function(sid) {
 
 # ---- Tasks -------------------------------------------------------------------
 fmt_tasks <- function(sid) {
-  # Rules that skip column J (the progress-bar sparkline keeps its own fill): one rule per column block, at index `at` and `at + 1`.
-  blocks <- function(formula, at, ...) Map(function(cc, k) fmt_cond_formula(sid, T_ROW1, T_AGG, cc[1L], cc[2L], formula, ...,
-    index = at + k), list(c(1L, 9L), c(11L, 14L)), 0:1)
-  # index = priority: the lowest index wins per cell, so the rules are listed in priority order and numbered 0, 1, 2...
-  rules <- c(
-    # a task with an ID but no owner shows under All people only: flag the empty Owner cell
-    list(fmt_cond_formula(sid, T_ROW1, T_AGG, 4, 4, '=AND($A4<>"",$D4="")', bg_color = hex_to_color("F7B2B2"), index = 0L)),
-    blocks('=$F4="Done"', 1L, font_color = C_GREY_FG),
-    list(fmt_cond_formula(sid, T_ROW1, T_AGG, 8, 8, '=$N4="Overdue"', bg_color = C_RED_BG, font_color = COL_RED_TEXT, bold = TRUE, index = 3L)),
-    blocks('=$F4="Blocked"', 4L, bg_color = C_AMB_BG),
-    blocks('=$N4="Overdue"', 6L, bg_color = C_RED_BG),
-    list(fmt_cond_color_scale(sid, T_ROW1, T_AGG, 15, 15, COL_WHITE, C_RISK_BG, hex_to_color("F7B2B2"), index = 8L)),
-    Map(function(q, k) fmt_cond_text_equals(sid, T_ROW1, T_AGG, 16, 16, q[[1]], bg_color = q[[2]], font_color = q[[3]], bold = TRUE,
-                                            index = 9L + k),
-        list(list("Overdue", C_RED_BG, COL_RED_TEXT), list("Blocked", C_AMB_BG, C_AMB_FG),
-             list("At risk", C_RISK_BG, C_RISK_FG), list("On track", C_GRN_BG, C_GRN_FG), list("Done", C_GREY_BG, C_GREY_FG)), 0:4),
-    # alternating bands drawn only on rows that hold a task (lowest priority, so Blocked / Overdue fills win): new rows band themselves
-    list(fmt_cond_formula(sid, T_ROW1, T_AGG, 1, 16, '=AND($A4<>"",MOD(ROW(),2)=1)', bg_color = C_BAND, index = 14L)))
-  c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = T_HDR, cols = 2L), fmt_tab_color(sid, hex_to_color("163A85"))),
-    widths(sid, c(60, 270, 140, 80, 72, 100, 100, 100, 70, 110, 76, 84, 76, 80, 76, 92)),
+  b <- new_batch()
+  b$push(c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = T_HDR, cols = 2L), fmt_tab_color(sid, hex_to_color("163A85"))),
+    fmt_col_widths(sid, c(60, 270, 140, 80, 72, 100, 100, 100, 70, 110, 76, 84, 76, 80, 76, 92)),
     list(body_fmt(sid, T_AGG, 16), title_fmt(sid, 1, 1), sub_fmt(sid, 2, 2),
          fmt_row_height(sid, 1, 1, 36L), fmt_row_height(sid, 2, 2, 24L), fmt_row_height(sid, T_HDR, T_HDR, 40L),
          fmt_row_height(sid, T_ROW1, T_AGG, 26L),
@@ -533,21 +509,29 @@ fmt_tasks <- function(sid) {
          fmt_dropdown_range(sid, T_ROW1, T_AGG, 6, 6, paste0("=", L_STATUS)),
          fmt_validation(sid, T_ROW1, T_AGG, 9, 9, "NUMBER_BETWEEN", c(0, 1), input_message = "Enter 0% to 100%"),
          fmt_validation(sid, T_ROW1, T_AGG, 7, 8, "DATE_IS_VALID", input_message = "Enter a date"),
-         fmt_basic_filter(sid, T_HDR, T_ROWN, 1, 16)),
-    rules)
+         fmt_basic_filter(sid, T_HDR, T_ROWN, 1, 16))))
+  # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab).
+  # A task with an ID but no owner shows under All people only: flag the empty Owner cell.
+  b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, 4, 4, '=AND($A4<>"",$D4="")', bg_color = hex_to_color("F7B2B2"))
+  # These skip column J (the progress-bar sparkline keeps its own fill): one rule per column block, A:I then K:N.
+  blocks <- function(formula, ...) for (cc in list(c(1L, 9L), c(11L, 14L)))
+    b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, cc[1L], cc[2L], formula, ...)
+  blocks('=$F4="Done"', font_color = C_GREY_FG)
+  b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, 8, 8, '=$N4="Overdue"', bg_color = C_RED_BG, font_color = COL_RED_TEXT, bold = TRUE)
+  blocks('=$F4="Blocked"', bg_color = C_AMB_BG)
+  blocks('=$N4="Overdue"', bg_color = C_RED_BG)
+  b$cf(fmt_cond_color_scale, sid, T_ROW1, T_AGG, 15, 15, COL_WHITE, C_RISK_BG, hex_to_color("F7B2B2"))
+  for (q in list(list("Overdue", C_RED_BG, COL_RED_TEXT), list("Blocked", C_AMB_BG, C_AMB_FG),
+                 list("At risk", C_RISK_BG, C_RISK_FG), list("On track", C_GRN_BG, C_GRN_FG), list("Done", C_GREY_BG, C_GREY_FG)))
+    b$cf(fmt_cond_text_equals, sid, T_ROW1, T_AGG, 16, 16, q[[1]], bg_color = q[[2]], font_color = q[[3]], bold = TRUE)
+  # alternating bands drawn only on rows that hold a task (last, so Blocked / Overdue fills win): new rows band themselves
+  b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, 1, 16, '=AND($A4<>"",MOD(ROW(),2)=1)', bg_color = C_BAND)
+  b$get()
 }
 
 # ---- Timeline ----------------------------------------------------------------
 fmt_timeline <- function(sid) {
-  bar <- function(status, index) fmt_cond_formula(sid, TL_ROW1, TL_ROWN, TL_W1, TL_WN,
-    sprintf('=AND($D5="%s",G$4<=$F5,G$4+6>=$E5)', status), bg_color = hex_to_color(ST_HEX[[status]]), index = index)
-  rules <- list(                                                    # index = priority: the lowest index wins per cell
-    bar("Done", 0L), bar("Blocked", 1L), bar("In progress", 2L), bar("Not started", 3L),
-    # as-of stripe only on rows that hold a task
-    fmt_cond_formula(sid, TL_ROW1, TL_ROWN, TL_W1, TL_WN, '=AND($A5<>"",$C$3>=G$4,$C$3<=G$4+6)', bg_color = C_ASOF, index = 4L),
-    fmt_cond_formula(sid, TL_HDR, TL_HDR, TL_W1, TL_WN, '=AND($C$3>=G$4,$C$3<=G$4+6)',
-                     bg_color = hex_to_color("F5A524"), font_color = COL_INK, bold = TRUE, index = 5L),
-    fmt_cond_formula(sid, TL_ROW1, TL_ROWN, 6, 6, '=AND($A5<>"",$D5<>"Done",$F5<$C$3)', font_color = COL_RED_TEXT, bold = TRUE, index = 6L))
+  b <- new_batch()
   key <- unlist(lapply(seq_along(STATUSES), function(i) {            # colour key chips, same fills as the bars
     c1 <- TL_KEY + 2L * (i - 1L)
     list(fmt_merge(sid, 2, 2, c1, c1 + 1L),
@@ -557,8 +541,8 @@ fmt_timeline <- function(sid) {
          fmt_borders(sid, 2, 2, c1, c1 + 1L, left = list(style = "SOLID_THICK", color = COL_WHITE),
                      right = list(style = "SOLID_THICK", color = COL_WHITE)))
   }), recursive = FALSE)
-  c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = TL_HDR, cols = 2L), fmt_tab_color(sid, hex_to_color("5B8DEF"))),
-    widths(sid, c(52, 220, 72, 84, 70, 70)), widths(sid, rep(50, N_WEEKS), start = TL_W1),
+  b$push(c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = TL_HDR, cols = 2L), fmt_tab_color(sid, hex_to_color("5B8DEF"))),
+    fmt_col_widths(sid, c(52, 220, 72, 84, 70, 70)), fmt_col_widths(sid, rep(50, N_WEEKS), start_col = TL_W1),
     list(body_fmt(sid, TL_ROWN + 5L, TL_WN), title_fmt(sid, 1, 1), sub_fmt(sid, 2, 1),
          fmt_row_height(sid, 1, 1, 36L), fmt_row_height(sid, 2, 2, 24L), fmt_row_height(sid, 3, 3, 22L),
          fmt_row_height(sid, TL_HDR, TL_HDR, 30L),
@@ -572,21 +556,26 @@ fmt_timeline <- function(sid) {
          fmt_cells(sid, TL_ROW1, TL_ROWN, 5, 6, numfmt = NF_DSHORT, halign = "CENTER"),
          fmt_borders(sid, TL_HDR, TL_ROWD, 1, TL_WN, bottom = thin, inner_h = thin),
          fmt_borders(sid, TL_ROW1, TL_ROWD, TL_W1, TL_WN, inner_v = list(style = "SOLID", color = hex_to_color("EDF0F6")))),
-    key, rules)
+    key))
+  # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab).
+  for (s in c("Done", "Blocked", "In progress", "Not started"))       # one bar colour per status
+    b$cf(fmt_cond_formula, sid, TL_ROW1, TL_ROWN, TL_W1, TL_WN,
+         sprintf('=AND($D5="%s",G$4<=$F5,G$4+6>=$E5)', s), bg_color = hex_to_color(ST_HEX[[s]]))
+  # as-of stripe only on rows that hold a task
+  b$cf(fmt_cond_formula, sid, TL_ROW1, TL_ROWN, TL_W1, TL_WN, '=AND($A5<>"",$C$3>=G$4,$C$3<=G$4+6)', bg_color = C_ASOF)
+  b$cf(fmt_cond_formula, sid, TL_HDR, TL_HDR, TL_W1, TL_WN, '=AND($C$3>=G$4,$C$3<=G$4+6)',
+       bg_color = hex_to_color("F5A524"), font_color = COL_INK, bold = TRUE)
+  b$cf(fmt_cond_formula, sid, TL_ROW1, TL_ROWN, 6, 6, '=AND($A5<>"",$D5<>"Done",$F5<$C$3)', font_color = COL_RED_TEXT, bold = TRUE)
+  b$get()
 }
 
 # ---- Workload ----------------------------------------------------------------
 fmt_workload <- function(sid) {
-  rules <- list(                                                    # index = priority: the lowest index wins per cell
-    fmt_cond_color_scale(sid, WL_T1_ROW1, WL_T1_ROWN, 3, 6, COL_WHITE, hex_to_color("DCE6FA"), hex_to_color("7FA1EA"), index = 0L),
-    fmt_cond_color_scale(sid, WL_T2_ROW1, WL_T2_ROWN, 3, 5, COL_WHITE, hex_to_color("FDE7B0"), hex_to_color("F2A365"), index = 1L),
-    fmt_cond_formula(sid, WL_T1_ROW1, WL_T1_TOT, 11, 11, sprintf('=AND(ISNUMBER($K%d),$K%d>INDIRECT("%s"))', WL_T1_ROW1, WL_T1_ROW1, OVERLOAD_REF),
-                     font_color = COL_RED_TEXT, bold = TRUE, index = 2L),
-    fmt_cond_number(sid, WL_T1_ROW1, WL_T1_ROWN, 8, 8, 0, font_color = COL_RED_TEXT, bold = TRUE, index = 3L))
+  b <- new_batch()
   tot <- function(r, c1, c2) c(list(apply_style(sid, r, r, c1, c2, STYLE_TOTAL, font_size = 10),
                                     fmt_borders(sid, r, r, c1, c2, top = list(style = "SOLID", color = COL_BRAND))))
-  c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = 2L), fmt_tab_color(sid, hex_to_color("5B6B8C"))),
-    widths(sid, c(16, 110, 96, 96, 96, 96, 80, 80, 96, 104, 100, 170)),
+  b$push(c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = 2L), fmt_tab_color(sid, hex_to_color("5B6B8C"))),
+    fmt_col_widths(sid, c(16, 110, 96, 96, 96, 96, 80, 80, 96, 104, 100, 170)),
     list(body_fmt(sid, 40L, 13), title_fmt(sid, 1, 2), sub_fmt(sid, 2, 2), fmt_row_height(sid, 1, 1, 36L),
          fmt_row_height(sid, WL_T1_HDR, WL_T1_HDR, 40L), fmt_row_height(sid, WL_T2_HDR, WL_T2_HDR, 40L),
          fmt_row_height(sid, WL_T1_ROW1, WL_T1_TOT, 26L), fmt_row_height(sid, WL_T2_ROW1, WL_T2_TOT, 26L)),
@@ -603,7 +592,14 @@ fmt_workload <- function(sid) {
          fmt_merge(sid, WL_T2_TOT + 2L, WL_T2_TOT + 2L, 2, 6),
          apply_style(sid, WL_T2_TOT + 2L, WL_T2_TOT + 2L, 2, 6, STYLE_SUBTITLE, font_size = 9, wrap = TRUE, valign = "TOP"),
          fmt_row_height(sid, WL_T2_TOT + 2L, WL_T2_TOT + 2L, 44L)),
-    tot(WL_T1_TOT, 2, 12), tot(WL_T2_TOT, 2, 6), rules)
+    tot(WL_T1_TOT, 2, 12), tot(WL_T2_TOT, 2, 6)))
+  # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab).
+  b$cf(fmt_cond_color_scale, sid, WL_T1_ROW1, WL_T1_ROWN, 3, 6, COL_WHITE, hex_to_color("DCE6FA"), hex_to_color("7FA1EA"))
+  b$cf(fmt_cond_color_scale, sid, WL_T2_ROW1, WL_T2_ROWN, 3, 5, COL_WHITE, hex_to_color("FDE7B0"), hex_to_color("F2A365"))
+  b$cf(fmt_cond_formula, sid, WL_T1_ROW1, WL_T1_TOT, 11, 11, sprintf('=AND(ISNUMBER($K%d),$K%d>INDIRECT("%s"))', WL_T1_ROW1, WL_T1_ROW1, OVERLOAD_REF),
+       font_color = COL_RED_TEXT, bold = TRUE)
+  b$cf(fmt_cond_number, sid, WL_T1_ROW1, WL_T1_ROWN, 8, 8, 0, font_color = COL_RED_TEXT, bold = TRUE)
+  b$get()
 }
 
 # ---- Command Center ----------------------------------------------------------
@@ -625,17 +621,9 @@ fmt_cc <- function(sid) {
   label_row <- function(r) c(list(fmt_merge(sid, r, r, 2, 13),
     apply_style(sid, r, r, 2, 13, STYLE_BODY_BOLD, font_size = 10, font_color = COL_BRAND_DEEP, halign = "LEFT", valign = "BOTTOM"),
     fmt_borders(sid, r, r, 2, 13, bottom = list(style = "SOLID_MEDIUM", color = COL_BRAND)), fmt_row_height(sid, r, r, 28L)))
-  rules <- c(                                                       # index = priority: the lowest index wins per cell
-    list(fmt_cond_number(sid, 5, 5, 6, 7, 0, font_color = COL_NEGATIVE, index = 0L),
-         fmt_cond_number(sid, 5, 5, 8, 9, 0, font_color = C_RISK_FG, index = 1L),
-         fmt_cond_number(sid, 5, 5, 12, 13, 0.75, "greater_eq", font_color = C_GRN_FG, index = 2L),
-         fmt_cond_number(sid, 5, 5, 12, 13, 0.5, "less", font_color = COL_NEGATIVE, index = 3L),
-         fmt_cond_color_scale(sid, 47, 51, 11, 11, COL_WHITE, C_RISK_BG, hex_to_color("F7B2B2"), index = 4L)),
-    Map(function(q, k) fmt_cond_text_equals(sid, 47, 51, 12, 13, q[[1]], bg_color = q[[2]], font_color = q[[3]], bold = TRUE, index = 5L + k),
-        list(list("Overdue", C_RED_BG, COL_RED_TEXT), list("Blocked", C_AMB_BG, C_AMB_FG),
-             list("At risk", C_RISK_BG, C_RISK_FG), list("On track", C_GRN_BG, C_GRN_FG)), 0:3))
-  c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = 2L), fmt_tab_color(sid, COL_BRAND)),
-    widths(sid, c(16, rep(CC_COLW, 12), 16)),
+  b <- new_batch()
+  b$push(c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = 2L), fmt_tab_color(sid, COL_BRAND)),
+    fmt_col_widths(sid, c(16, rep(CC_COLW, 12), 16)),
     list(body_fmt(sid, 60L, 14), fmt_row_height(sid, 1, 1, 48L), fmt_row_height(sid, 2, 2, 30L), fmt_row_height(sid, 3, 3, 10L),
          fmt_row_height(sid, 4, 4, 26L), fmt_row_height(sid, 5, 5, 52L), fmt_row_height(sid, 6, 6, 26L), fmt_row_height(sid, 7, 7, 28L)),
     text_merges, cards,
@@ -666,8 +654,17 @@ fmt_cc <- function(sid) {
          fmt_cells(sid, 47, 51, 10, 10, numfmt = NF_DSHORT, halign = "CENTER"), fmt_cells(sid, 47, 51, 11, 11, numfmt = NF_NUM0, halign = "CENTER"),
          fmt_borders(sid, 46, 51, 2, 13, bottom = thin, inner_h = thin),
          apply_style(sid, 54, 54, 2, 13, STYLE_BODY, font_size = 10, wrap = TRUE, valign = "TOP", font_color = COL_MUTED_TEXT),
-         fmt_row_height(sid, 54, 54, 64L), fmt_row_height(sid, 55, 56, 22L)),
-    rules)
+         fmt_row_height(sid, 54, 54, 64L), fmt_row_height(sid, 55, 56, 22L))))
+  # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab).
+  b$cf(fmt_cond_number, sid, 5, 5, 6, 7, 0, font_color = COL_NEGATIVE)
+  b$cf(fmt_cond_number, sid, 5, 5, 8, 9, 0, font_color = C_RISK_FG)
+  b$cf(fmt_cond_number, sid, 5, 5, 12, 13, 0.75, "greater_eq", font_color = C_GRN_FG)
+  b$cf(fmt_cond_number, sid, 5, 5, 12, 13, 0.5, "less", font_color = COL_NEGATIVE)
+  b$cf(fmt_cond_color_scale, sid, 47, 51, 11, 11, COL_WHITE, C_RISK_BG, hex_to_color("F7B2B2"))
+  for (q in list(list("Overdue", C_RED_BG, COL_RED_TEXT), list("Blocked", C_AMB_BG, C_AMB_FG),
+                 list("At risk", C_RISK_BG, C_RISK_FG), list("On track", C_GRN_BG, C_GRN_FG)))
+    b$cf(fmt_cond_text_equals, sid, 47, 51, 12, 13, q[[1]], bg_color = q[[2]], font_color = q[[3]], bold = TRUE)
+  b$get()
 }
 
 # apply per-tab batches (strict: any API error stops the build with the message)
@@ -747,16 +744,13 @@ batch_format(ss, list(fmt_chart_basic(sid_wl, "Hours remaining by owner and stat
 tasks_url <- sprintf("https://docs.google.com/spreadsheets/d/%s/edit#gid=%d", ss_id, sid_t)
 # Only Tasks!O3 gets a note: Sheets' PDF export prints every note as a [n] marker plus an extra page, and on the Command Center
 # the risk definition is visible text (row 52) instead.
-# The skill has no cell-note helper, so a raw updateCells request.
-note_req <- function(sid, row, col, text) list(updateCells = list(range = grid_range(sid, row, row, col, col),
-  rows = list(list(values = list(list(note = text)))), fields = "note"))     # a hover note; leaves value and format alone
 batch_format(ss, list(
   link_cells_req(sid_cc, 1, 11, "Built with r-googlesheets4", REPO_URL),
   link_cells_req(sid_cc, 52, 10, "Open the full task list", tasks_url),
   link_cells_req(sid_cc, 55, 2, c("Built with the r-googlesheets4 skill (github.com/salvadoraveldano/r-googlesheets4)",
                                   "Built on googlesheets4 by Jennifer Bryan and Posit (googlesheets4.tidyverse.org)"),
                  c(REPO_URL, GS4_URL)),
-  note_req(sid_t, 3, 15, sprintf(paste0("Risk score, 0 to 100 (Done tasks score 0): priority points + schedule-gap points + an overdue bonus + a blocked bonus, ",
+  fmt_note(sid_t, 3, 15, sprintf(paste0("Risk score, 0 to 100 (Done tasks score 0): priority points + schedule-gap points + an overdue bonus + a blocked bonus, ",
     "capped at 100. The weights are inputs on the Lists tab, rows %d to %d. At or above the At-risk threshold (Lists!B%d) the task is flagged At risk."),
     LW1, LW1 + 3L, THR_ROW))), strict = TRUE)
 
@@ -817,10 +811,7 @@ if (!identical(got_health, EXP$health)) bad("Tasks health differs from reference
 if (!isTRUE(all.equal(got_risk, EXP$risk))) bad("Tasks risk differs from reference in %d row(s)", sum(got_risk != EXP$risk))
 
 # 3. charts exist and read from visible cells
-# (read_values() reads cell values only and the skill has no metadata reader: one raw spreadsheets.get with a field mask)
-chk <- request_make(request_generate("sheets.spreadsheets.get", params = list(spreadsheetId = ss_id, fields = "sheets(charts(chartId))")))
-httr::stop_for_status(chk)
-n_charts <- sum(vapply(httr::content(chk, as = "parsed")$sheets, function(s) length(s$charts %||% list()), integer(1)))
+n_charts <- sum(gs_count_objects(ss_id)$charts)
 if (n_charts != 4L) bad("expected 4 charts, found %d", n_charts)
 src <- audit_chart_sources(ss_id)                        # every tab, including charts that sit on a different tab than their data
 if (length(src)) bad("chart source audit: %s", paste(src, collapse = "; "))
