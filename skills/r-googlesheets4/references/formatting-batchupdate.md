@@ -127,12 +127,22 @@ of a merged cell. If you get HTTP 400 *"can't freeze columns which contain
 only part of a merged cell"*, either drop the boundary-crossing merge,
 merge only the non-frozen portion, or freeze rows only.
 
-### `updateDimensionProperties` → `fmt_col_width()` / `fmt_row_height()`
+### `updateDimensionProperties` → `fmt_col_width()` / `fmt_col_widths()` / `fmt_row_height()`
 
 ```r
 fmt_col_width(sid, start_col = 1L, end_col = 1L, width_px = 280L)
 fmt_row_height(sid, start_row = 5L, end_row = 5L, height_px = 30L)
+
+# Widths for a run of columns in one call: column start_col + i - 1 gets widths[i]
+fmt_col_widths(sid, c(220, 90, 90, 90, 140))                # A:E, three requests (equal runs merge)
+fmt_col_widths(sid, c(120, 75.6, 200), start_col = 7)       # G:I; 75.6 is sent as 76
 ```
+
+`fmt_col_widths()` returns a LIST of requests, so combine it with `c()`, not
+`list()`. It rounds each width to whole pixels because the API answers HTTP 400
+to a fraction (`fmt_col_width()` passes the number through, so round it
+yourself there). A width that is empty, `NA`, `Inf`, zero or negative stops
+before any request is built.
 
 ### `addDimensionGroup` → `fmt_group_cols()` / `fmt_group_rows()`
 
@@ -193,10 +203,20 @@ font. `text`, `background` and `link` are optional arguments. Each colour is a
 hex string or an `hex_to_color()` list. Cells with their own colours are not
 touched.
 
-### `updateCells` `note` field — cell notes
+### `updateCells` `note` field → `fmt_note()` — cell notes
 
 Anchor an assumption/source note on a cell (the small black corner
-triangle). No helper — the raw request is short:
+triangle):
+
+```r
+fmt_note(sid, row = 5L, col = 2L, text = "Source: FY26 budget v3, row 41")   # B5
+fmt_note(sid, 5L, 2L, "")                                                    # clears it
+```
+
+It builds one `updateCells` request with `fields = "note"`, so the cell's
+value and format stay as they are (checked live in `scripts/selftest.R`). `row`
+and `col` are 1-based, as in `fmt_cells()`; `text` must be one non-`NA` string,
+and `""` clears the note. The raw request it sends:
 
 ```r
 list(updateCells = list(
@@ -206,8 +226,8 @@ list(updateCells = list(
 ))
 ```
 
-`fields = "note"` leaves the cell's value and format untouched. Clear a
-note by sending `note = ""`.
+⚠ Sheets' PDF export prints every note as a `[n]` marker plus an extra page, so
+keep notes off a tab you export for `visual_qa()` or `export_sheet_as_pdf()`.
 
 ## `batch_format()` — sending it all at once
 

@@ -46,8 +46,9 @@ community: see [Credits](#credits).
   the yes; name the packages first). Never install R itself or run installers.
 - Never print tokens, keys or the contents of `.rds` / service-account files.
 - **A wrong `SHEET_ID` must not get your rebuild.** `gs_open_or_create()` stops, before
-  changing anything, when the file's title and tabs do not match the script. Relay the
-  message and ask the user to confirm the id. Never pass `allow_mismatch = TRUE` or
+  changing anything, when the file's title and tabs do not match the script, or when
+  you passed a `locale` and the file has another one. Relay the message and ask the
+  user to confirm the id. Never pass `allow_mismatch = TRUE` or
   edit the guard out without asking.
 - **State only what you observed.** If you did not read a page image, a script or a
   command output, say so; never describe it from the findings alone. When you report

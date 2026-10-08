@@ -108,6 +108,7 @@ the cells alone will not catch this.
 | `first_visible_col()`              | Anchor content placed in hidden col        |
 | `audit_merge()`                    | Merges with insufficient visible width     |
 | `dump_reference_tab()` + diff      | Format-contract drift                      |
+| `gs_count_objects()` before / after a rebuild | Objects stacked or lost (charts, rules, validation, notes, ...) |
 
 ## Concrete one-liner audit script to run after every build
 
@@ -158,6 +159,33 @@ Two gotchas on this endpoint:
   through `request_make()`; this is a bare `httr::GET`). `export_sheet_as_pdf()`
   retries with linear backoff (5 tries, `Sys.sleep(15 * try_i)`). When exporting
   many tabs in a loop, also sleep ~10s between tabs to stay under the burst limit.
+
+## Count the objects around a rebuild
+
+A rebuild in place can stack charts and rules or lose a validation without any
+error. `gs_count_objects()` (in `gs_qa.R`) takes a census with ONE read-only
+`spreadsheets.get`: per tab, the charts, conditional rules, cells with a
+validation rule, protected ranges, filter views, slicers, banded ranges, merges,
+cells with a note and frozen rows and columns. Take it before the rebuild, take
+it again after, and compare, the same idea as the flip-and-restore test below:
+
+```r
+before <- gs_count_objects(ss_id)
+# ... rerun the build with SHEET_ID=<id> ...
+stopifnot(identical(before, gs_count_objects(ss_id)))   # same objects, none stacked or lost
+```
+
+When the two differ, `print()` both and compare the rows: a column that grew is
+stacking, one that fell is something the rebuild no longer makes. The named-range
+count is the attribute `"named_ranges"` and prints under the table.
+
+Limits: it counts objects, not their content (a chart that moved or a rule that
+now covers other cells counts the same: `dump_reference_tab()` diffs the content),
+and `banded` includes the band a table carries. Seen live: a named range removed
+by deleting its tab drops out of this count while its NAME stays reserved
+(`addNamedRange` then answers HTTP 400, "already exists"), so delete the range
+(`deleteNamedRange`) before the tab, as `gs_reset_tabs()` does. It asks for the
+cell grid, so it is slower on a tab with very many rows.
 
 ## Flip-and-restore test: does the input really drive the outputs?
 

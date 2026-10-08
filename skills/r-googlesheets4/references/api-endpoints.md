@@ -34,7 +34,7 @@ all live under `sheets.spreadsheets.batchUpdate`.
 | `unmergeCells`              | `fmt_unmerge()`                 | Unmerge                                            |
 | `updateBorders`             | `fmt_borders()`                 | Borders on all sides                               |
 | `updateSheetProperties`     | `fmt_gridlines()`, `fmt_freeze()`, `fmt_tab_color()`, `fmt_tab_order()` | Sheet-level config, tab order |
-| `updateDimensionProperties` | `fmt_col_width()`, `fmt_row_height()` | Width / height in pixels                     |
+| `updateDimensionProperties` | `fmt_col_width()`, `fmt_col_widths()`, `fmt_row_height()` | Width / height in pixels (`fmt_col_widths()`: a vector of widths in one call, rounded to whole pixels) |
 | `addDimensionGroup`         | `fmt_group_cols()`, `fmt_group_rows()` (returns 2 requests) | Group + collapse |
 | `setDataValidation`         | `fmt_dropdown()`, `fmt_dropdown_range()`, `fmt_validation()` | Dropdowns, number, date and custom rules |
 | `addNamedRange`             | `fmt_named_range()`             | Named ranges                                       |
@@ -43,6 +43,7 @@ all live under `sheets.spreadsheets.batchUpdate`.
 | `deleteConditionalFormatRule` | `fmt_delete_cond_rules()`     | Delete (use descending indices)                    |
 | `addBanding`                | `fmt_banding()`                 | Alternating row colors                             |
 | `updateCells` (with `pivotTable`) | `fmt_pivot_table()`        | Pivot tables                                       |
+| `updateCells` (with `note`) | `fmt_note()`                    | Cell note; mask `note` alone keeps value and format; `""` clears |
 | `addFilterView`             | `fmt_filter_view()`             | Saved per-user filter view                         |
 | `setBasicFilter` / `clearBasicFilter` | `fmt_basic_filter()` (clear: inline) | The tab's one filter (set replaces it; idempotent) |
 | `addProtectedRange`         | `fmt_protected_range()`         | Lock a range                                       |

@@ -408,3 +408,84 @@ dump_reference_tab <- function(ss_id, tab_title, range, out_path) {
   message(sprintf("[dump_reference_tab] wrote %s", out_path))
   invisible(out_path)
 }
+
+# ── Object census (snapshot before a rebuild, compare after) -----------------
+
+#' Count what each tab holds, to snapshot a file before a rebuild and compare it
+#' after: `identical(gs_count_objects(a), gs_count_objects(b))`. One read-only
+#' `spreadsheets.get` with a field mask; nothing is written.
+#'
+#' It counts OBJECTS, not their content: a chart that moved, a rule that now points
+#' at other cells or a note with new wording counts the same. Use
+#' `dump_reference_tab()` to diff the content. `banded` counts every banded range,
+#' including the one a table carries. Seen live: deleting a tab removed its named
+#' range from the list Sheets returns, but the NAME stayed reserved (`addNamedRange`
+#' answered "already exists"), so a rebuild that deletes tabs can leave a name this
+#' count does not show. Delete the range (`deleteNamedRange`) before the tab.
+#'
+#' `validated_cells` and `notes` live on the cells, so the call asks for the cell
+#' grid (`includeGridData`). Sheets sends each tab only as far as its last row and
+#' column that hold something, one entry per cell in between: fast for a model (a
+#' 12-tab file took 0.2 s), heavy for a tab with tens of thousands of rows, or with
+#' one lone note far below the data.
+#'
+#' @param ss_id  spreadsheet id, URL or object
+#' @return data.frame, one row per tab in tab order: `tab`, `charts`, `cond_rules`,
+#'   `validated_cells` (cells that carry a data validation rule, not rules),
+#'   `protected`, `filter_views`, `slicers`, `banded`, `merges`, `notes` (cells
+#'   that carry a note), `frozen_rows`, `frozen_cols`. The spreadsheet's named
+#'   range count is its attribute `"named_ranges"` and is printed under the table.
+#' @examples
+#' before <- gs_count_objects(ss_id)
+#' # ... rebuild ...
+#' stopifnot(identical(before, gs_count_objects(ss_id)))   # same objects, none stacked or lost
+gs_count_objects <- function(ss_id) {
+  resp <- googlesheets4::request_make(googlesheets4::request_generate(
+    "sheets.spreadsheets.get",
+    params = list(spreadsheetId = as.character(googlesheets4::as_sheets_id(ss_id)),
+                  includeGridData = TRUE,
+                  fields = paste0(
+                    "namedRanges(namedRangeId),",
+                    "sheets(properties(title,gridProperties(frozenRowCount,frozenColumnCount)),",
+                    "charts(chartId),conditionalFormats(ranges),protectedRanges(protectedRangeId),",
+                    "filterViews(filterViewId),slicers(slicerId),bandedRanges(bandedRangeId),merges,",
+                    "data(rowData(values(dataValidation,note))))"))))
+  if (httr::status_code(resp) >= 400L)
+    stop("[gs_count_objects] spreadsheets.get failed: HTTP ", httr::status_code(resp), ": ",
+         substr(httr::content(resp, as = "text", encoding = "UTF-8"), 1L, 300L), call. = FALSE)
+  body   <- httr::content(resp, as = "parsed")
+  sheets <- body$sheets %||% list()
+  n_of   <- function(field) vapply(sheets, function(s) length(s[[field]]), 0L)
+  # cells on the tab that carry `field` (dataValidation or note)
+  cells_with <- function(s, field) sum(vapply(s$data %||% list(), function(g)
+    sum(vapply(g$rowData %||% list(), function(r)
+      sum(vapply(r$values %||% list(), function(v) !is.null(v[[field]]), NA)), 0L)), 0L))
+  frozen <- function(field) vapply(sheets, function(s)
+    as.integer(s$properties$gridProperties[[field]] %||% 0L), 0L)     # the API leaves out a zero
+  out <- data.frame(
+    tab             = vapply(sheets, function(s) s$properties$title %||% "", ""),
+    charts          = n_of("charts"),
+    cond_rules      = n_of("conditionalFormats"),
+    validated_cells = vapply(sheets, cells_with, 0L, "dataValidation"),
+    protected       = n_of("protectedRanges"),
+    filter_views    = n_of("filterViews"),
+    slicers         = n_of("slicers"),
+    banded          = n_of("bandedRanges"),
+    merges          = n_of("merges"),
+    notes           = vapply(sheets, cells_with, 0L, "note"),
+    frozen_rows     = frozen("frozenRowCount"),
+    frozen_cols     = frozen("frozenColumnCount"),
+    stringsAsFactors = FALSE)
+  attr(out, "named_ranges") <- length(body$namedRanges)
+  class(out) <- c("gs_object_counts", "data.frame")
+  out
+}
+
+# Print method for gs_count_objects(): the table, then the named-range count. Kept
+# private (dot name) and registered by hand so it needs no helpers.md row.
+.print_gs_object_counts <- function(x, ...) {
+  print.data.frame(x, row.names = FALSE, ...)
+  cat("named ranges:", attr(x, "named_ranges"), "\n")
+  invisible(x)
+}
+registerS3method("print", "gs_object_counts", .print_gs_object_counts)

@@ -6,7 +6,8 @@
 # coordinate / color utilities. All `fmt_*` functions return a single request
 # object (a list) ready to slot into a `batch_format()` call — except
 # `fmt_group_cols()` and `fmt_group_rows()`, which return TWO requests (see
-# their headers) and `fmt_tab_order()`, which returns one per tab. Use `c()` not
+# their headers), `fmt_tab_order()`, which returns one per tab, and
+# `fmt_col_widths()`, which returns one per run of equal widths. Use `c()` not
 # `list()` when combining those.
 #
 # Sourcing order: source this file FIRST. `gs_buffer.R`, `gs_qa.R`, and
@@ -354,6 +355,29 @@ fmt_col_width <- function(sheet_id, start_col, end_col, width_px) {
   ))
 }
 
+#' Widths for a run of columns in one call: column `start_col + i - 1` gets
+#' `widths[i]`. Runs of equal consecutive widths merge into one request, so
+#' `c(220, 90, 90, 90, 140)` gives three requests, not five. Returns a LIST of
+#' requests, so combine it with `c()`, not `list()`.
+#'
+#' @param sheet_id   numeric Sheet ID
+#' @param widths     numeric vector of pixel widths, all positive. The API takes
+#'                   whole pixels (a fraction is an HTTP 400), so each width is
+#'                   rounded first. NA, zero, negative or non-numeric entries
+#'                   stop before any request is built
+#' @param start_col  1-based column that gets `widths[1]` (default 1 = column A)
+#' @return list of `fmt_col_width()` requests
+#' @examples batch_format(ss, fmt_col_widths(sid, c(220, 90, 90, 90, 140)), strict = TRUE)
+fmt_col_widths <- function(sheet_id, widths, start_col = 1L) {
+  if (!is.numeric(widths) || !length(widths) || !all(is.finite(widths) & round(widths) >= 1))
+    stop("fmt_col_widths: `widths` must be a non-empty numeric vector of positive pixel widths (no NA)",
+         call. = FALSE)
+  runs <- rle(as.integer(round(widths)))
+  last <- cumsum(runs$lengths)
+  lapply(seq_along(last), function(i)
+    fmt_col_width(sheet_id, start_col + last[[i]] - runs$lengths[[i]], start_col + last[[i]] - 1L, runs$values[[i]]))
+}
+
 fmt_row_height <- function(sheet_id, start_row, end_row, height_px) {
   list(updateDimensionProperties = list(
     range = list(sheetId = sheet_id, dimension = "ROWS",
@@ -525,7 +549,7 @@ fmt_named_range <- function(sheet_id, name, start_row, end_row, start_col, end_c
 # ── Conditional formatting --------------------------------------------------
 
 fmt_cond_negative <- function(sheet_id, start_row, end_row, start_col, end_col,
-                              color = COL_RED_TEXT) {
+                              color = COL_RED_TEXT, index = 0L) {
   list(addConditionalFormatRule = list(
     rule = list(
       ranges = list(grid_range(sheet_id, start_row, end_row, start_col, end_col)),
@@ -539,7 +563,7 @@ fmt_cond_negative <- function(sheet_id, start_row, end_row, start_col, end_col,
         )
       )
     ),
-    index = 0L
+    index = index
   ))
 }
 
@@ -693,6 +717,26 @@ parse_hyperlink <- function(v) {
   list(url = m[2], label = gsub('""', '"', m[3]))
 }
 
+#' Set the NOTE (the hover comment) on ONE cell: an `updateCells` request whose
+#' mask is `note` alone, so the cell's value and format stay as they are. An empty
+#' string clears the note. ⚠ Sheets' PDF export prints every note as a `[n]` marker
+#' plus an extra page, so keep notes off tabs you export for `visual_qa()`.
+#'
+#' @param sheet_id  numeric Sheet ID
+#' @param row,col   1-based cell, as in `fmt_cells()`
+#' @param text      the note, one string; `""` clears the note
+#' @return one request
+#' @examples batch_format(ss, list(fmt_note(sid, 3, 15, "Risk score, 0 to 100.")), strict = TRUE)
+fmt_note <- function(sheet_id, row, col, text) {
+  if (!is.character(text) || length(text) != 1L || is.na(text))
+    stop("fmt_note: `text` must be one string (\"\" clears the note)", call. = FALSE)
+  list(updateCells = list(
+    range  = grid_range(sheet_id, row, row, col, col),
+    rows   = list(list(values = list(list(note = text)))),
+    fields = "note"
+  ))
+}
+
 #' Auto-fit row heights to wrapped content (the row analog of
 #' `fmt_auto_resize_cols()` in gs_modern.R). Overrides previously pinned
 #' `fmt_row_height()` values — use for narrative rows whose wrapped text length
@@ -749,6 +793,44 @@ batch_format <- function(ss, requests, strict = FALSE) {
     message(sprintf("[batch_format] %d/%d applied", n_rep, length(requests)))
   }
   invisible(resp)
+}
+
+#' Request collector for ONE tab per `batch_format()` call. Returns a list of three
+#' functions:
+#'   `$push(x)`  add one request (a named one-key list, as every `fmt_*` returns) or
+#'               a list of requests (`fmt_col_widths()`, `fmt_group_cols()`, ...);
+#'               `unname()` a one-element named list of requests first, or it reads
+#'               as a single request
+#'   `$cf(f, sheet_id, ...)`  call the conditional-format helper `f` (any `fmt_cond_*`)
+#'               as `f(sheet_id, ..., index = k)` and add the result. `k` counts the
+#'               rules added through `$cf` FOR THAT `sheet_id`, from 0, so the FIRST
+#'               rule listed wins (the helpers' default `index = 0` makes the last
+#'               one win). Rule priorities are per tab. Add every conditional-format
+#'               rule through `$cf`: a rule pushed with `$push` is not counted, uses
+#'               the default `index = 0`, and its final position depends on when it
+#'               was pushed (it can reorder the `$cf` rules). Do not pass `index`
+#'               yourself.
+#'   `$get()`    the requests so far, ready for `batch_format()`
+#' @return list(push, cf, get)
+#' @examples b <- new_batch()
+#'   b$push(fmt_cells(sid, 1, 1, 1, 4, bold = TRUE))
+#'   b$cf(fmt_cond_formula, sid, 2, 50, 1, 4, '=$D2="Late"', bg_color = COL_RED_LIGHT)
+#'   b$cf(fmt_cond_formula, sid, 2, 50, 1, 4, '=$D2<>""', bg_color = COL_GREEN_LIGHT)
+#'   batch_format(ss, b$get(), strict = TRUE)
+new_batch <- function() {
+  items <- list(); n_cf <- list()
+  list(
+    push = function(x) {
+      if (length(x) == 1L && !is.null(names(x))) x <- list(x)   # a request is a one-key named list
+      items <<- c(items, unname(x)); invisible()
+    },
+    cf = function(f, sheet_id, ...) {
+      key <- as.character(sheet_id)
+      k <- n_cf[[key]] %||% 0L
+      items <<- c(items, list(f(sheet_id, ..., index = k)))
+      n_cf[[key]] <<- k + 1L; invisible()
+    },
+    get = function() items)
 }
 
 # ── Reading values ----------------------------------------------------------
@@ -856,21 +938,25 @@ GS_USES_DRIVE  <- GS_SCOPE_LEVEL %in% c("export", "drive")
 #'              file (`"Etc/GMT"`), or NULL to leave Google's default. An NA
 #'              `Sys.timezone()` (some containers) is skipped. A reused file keeps
 #'              its own time zone.
-#'   locale     CREATE only, e.g. `"en_US"` (number/date parsing and TEXT() formats
-#'              follow it). NULL = Google's default. A reused file keeps its locale;
-#'              change it with an `updateSpreadsheetProperties` request.
+#'   locale     e.g. `"en_US"` (number/date parsing and TEXT() formats follow it).
+#'              On CREATE it sets the locale; NULL = Google's default. On REUSE the
+#'              file keeps its locale, so a non-NULL `locale` that differs
+#'              from the file's (as Google reports it, e.g. `"de_DE"`) stops BEFORE
+#'              adding tabs or changing anything, naming both. NULL skips the check.
+#'              Change a file's locale with an `updateSpreadsheetProperties` request.
 #'   rows,cols  grid size: one number for every tab, or a vector named by tab
 #'              (`cols = c(Forecast = 31)`); an unnamed vector longer than 1
 #'              stops; NULL keeps the default (1000 x 26).
 #'              Applied on every run, so SHRINKING deletes the cells outside the
 #'              new grid.
-#'   allow_mismatch  REUSE only. Default FALSE: if the file's title is not `title`
-#'              and the file does not already have ALL of `tabs`, it stops BEFORE
-#'              adding tabs or changing anything (a wrong SHEET_ID would otherwise
-#'              get your tabs and, with gs_reset_tabs(), be wiped). A renamed copy
-#'              of your own file still passes, because it has all the tabs (a weak
-#'              check for generic names like Summary: confirm the id). TRUE
-#'              reuses any file, whatever its title or tabs.
+#'   allow_mismatch  REUSE only. Default FALSE: it stops BEFORE adding tabs or
+#'              changing anything when (a) the file's title is not `title` and the
+#'              file does not already have ALL of `tabs` (a wrong SHEET_ID would
+#'              otherwise get your tabs and, with gs_reset_tabs(), be wiped; a
+#'              renamed copy of your own file still passes, because it has all the
+#'              tabs, a weak check for generic names like Summary: confirm the id),
+#'              or (b) a non-NULL `locale` differs from the file's. TRUE reuses any
+#'              file, whatever its title, tabs or locale.
 gs_open_or_create <- function(title, tabs, id = Sys.getenv("SHEET_ID", ""),
                               time_zone = Sys.timezone(), locale = NULL,
                               rows = NULL, cols = NULL, allow_mismatch = FALSE) {
@@ -892,6 +978,11 @@ gs_open_or_create <- function(title, tabs, id = Sys.getenv("SHEET_ID", ""),
       stop("[gs_open_or_create] SHEET_ID is a file titled '", have$name, "' but this script builds '", title,
            "' and the file does not have its tabs. Nothing was changed. Confirm the id with the user; ",
            "pass allow_mismatch = TRUE only if they confirm they want to reuse this file.", call. = FALSE)
+    if (!isTRUE(allow_mismatch) && !is.null(locale) && !identical(have$locale, locale))
+      stop("[gs_open_or_create] SHEET_ID is a file with locale '", have$locale, "' but this script asks for '", locale,
+           "', so number, date and TEXT() formats would not read as the script expects. Nothing was changed. ",
+           "Confirm the id and the locale with the user; pass allow_mismatch = TRUE only if they confirm they want ",
+           "to reuse this file as it is, or change its locale with an updateSpreadsheetProperties request.", call. = FALSE)
     added <- setdiff(tabs, have$sheets$name)
     for (t in added) googlesheets4::sheet_add(ss, sheet = t)
     if (length(added)) message("[gs_open_or_create] added tab(s) not in the file: ",

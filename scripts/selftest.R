@@ -213,6 +213,32 @@ area_offline <- function() {
   check("fmt_cond_text_equals is fmt_cond_text(op = 'equals')",
         identical(fmt_cond_text_equals(1, 1, 5, 1, 1, "x", bg_color = COL_RED_LIGHT, index = 2L),
                   fmt_cond_text(1, 1, 5, 1, 1, op = "equals", text = "x", bg_color = COL_RED_LIGHT, index = 2L)))
+  w <- fmt_col_widths(7, c(220, 90, 90, 90.4, 140), start_col = 3)
+  wr <- lapply(w, function(r) r$updateDimensionProperties$range)
+  check("fmt_col_widths: equal runs merge (3 requests), widths round to whole pixels, start_col offsets the columns",
+        length(w) == 3L && identical(vapply(wr, function(r) as.numeric(r$startIndex), 0), c(2, 3, 6)) &&
+          identical(vapply(wr, function(r) as.numeric(r$endIndex), 0), c(3, 6, 7)) &&
+          identical(vapply(w, function(r) as.numeric(r$updateDimensionProperties$properties$pixelSize), 0), c(220, 90, 140)) &&
+          all(vapply(wr, function(r) r$dimension == "COLUMNS" && r$sheetId == 7, NA)))
+  check("fmt_col_widths: empty, NA, Inf, zero, negative, below-one and non-numeric widths stop",
+        all(vapply(list(NULL, numeric(0), c(100, NA), Inf, 0, -5, 0.4, "a"), function(x) !is.na(errs(fmt_col_widths(1, x))), NA)))
+  nt <- fmt_note(7, 3, 15, "Risk score")$updateCells
+  check("fmt_note: updateCells on one cell with the mask 'note' alone; '' is allowed; anything but one non-NA string stops",
+        identical(nt$fields, "note") && identical(nt$rows[[1]]$values[[1]]$note, "Risk score") &&
+          identical(unlist(nt$range), unlist(grid_range(7, 3, 3, 15, 15))) &&
+          identical(fmt_note(7, 1, 1, "")$updateCells$rows[[1]]$values[[1]]$note, "") &&
+          all(vapply(list(NA_character_, 1, c("a", "b"), NULL, character(0)), function(x) !is.na(errs(fmt_note(1, 1, 1, x))), NA)))
+  nb <- new_batch()
+  nb$push(fmt_freeze(10, rows = 1L)); nb$cf(fmt_cond_negative, 10, 1, 5, 1, 1)
+  nb$cf(fmt_cond_number, 10, 1, 5, 1, 1, 5, "greater", bg_color = COL_RED_LIGHT); nb$cf(fmt_cond_negative, 20, 1, 5, 1, 1)
+  nb$push(fmt_col_widths(10, c(50, 60)))
+  nbr <- nb$get()
+  check("new_batch: $cf numbers rules per sheet from 0 (first listed wins); $push is not counted; a pushed list is flat",
+        length(nbr) == 6L && identical(vapply(nbr, function(x) x$addConditionalFormatRule$index %||% NA_integer_, 0L), c(NA, 0L, 1L, 0L, NA, NA)) &&
+          identical(names(nbr[[1]]), "updateSheetProperties") && is.null(names(nbr)) && identical(new_batch()$get(), list()))
+  check("fmt_cond_negative takes index (default 0, as before)",
+        identical(fmt_cond_negative(1, 1, 2, 1, 1)$addConditionalFormatRule$index, 0L) &&
+          identical(fmt_cond_negative(1, 1, 2, 1, 1, index = 3L)$addConditionalFormatRule$index, 3L))
   check("fmt_theme_colors: bad hex stops; a hex_to_color() list passes",
         !is.na(errs(fmt_theme_colors(accent1 = "blue"))) && is.na(errs(fmt_theme_colors(accent1 = hex_to_color("2457C5")))))
   check("fmt_tab_order: empty or repeated tabs stop before any call",
@@ -316,6 +342,11 @@ area_cells <- function() {
          fmt_image_cell(s, 1, 11, "https://example.com/logo.png")),
     fmt_group_rows(s, 20, 22, collapsed = TRUE), fmt_group_cols(s, 13, 14, collapsed = FALSE),
     list(fmt_auto_resize_cols(s, 1, 4), fmt_auto_resize_rows(s, 2, 3))))
+  apply_ok("fmt_col_widths (six widths from column G, one fractional) and fmt_note on a filled, formatted cell (A1)", c(
+    fmt_col_widths(s, c(120, 120, 75.6, 200, 200, 200), start_col = 7),
+    list(fmt_note(s, 1, 1, "Header note"))))
+  check("fact: the API rejects a fractional pixelSize with HTTP 400 (FAIL = Google accepts it, so fmt_col_widths() need not round)",
+        has_err(errs(batch_format(ss, list(fmt_col_width(s, 12, 12, 75.6)), strict = TRUE)), "HTTP 400"))
 
   b <- api_get(paste0("namedRanges(name),sheets(properties(title,tabColorStyle,gridProperties(frozenRowCount,hideGridlines)),",
                       "merges,bandedRanges(bandedRangeId),rowGroups,columnGroups,data(rowMetadata(pixelSize,hiddenByUser),",
@@ -346,6 +377,11 @@ area_cells <- function() {
         sh$properties$gridProperties$frozenRowCount == 1 && isTRUE(sh$properties$gridProperties$hideGridlines) &&
           identical(hex(sh$properties$tabColorStyle$rgbColor), "#2457C5"))
   check("fmt_col_width / fmt_row_height", d$columnMetadata[[6]]$pixelSize == 150 && d$rowMetadata[[1]]$pixelSize == 40)
+  check("fmt_col_widths: G and H 120, I 76 (75.6 rounded), J to L 200",
+        identical(as.numeric(unlist(lapply(d$columnMetadata[7:12], function(m) m$pixelSize))), c(120, 120, 76, 200, 200, 200)))
+  check("fmt_note: the note is stored and the cell keeps its value, fill, bold and size (the mask is 'note' alone)",
+        identical(cell_at(rows, 1, 1)$note, "Header note") && identical(cell_at(rows, 1, 1)$formattedValue, "Header") &&
+          identical(hex(cell_at(rows, 1, 1)$userEnteredFormat$backgroundColor), "#2457C5") && isTRUE(tf(1, 1)$bold) && tf(1, 1)$fontSize == 14)
   check("fmt_auto_resize_cols widened column A to its long label", d$columnMetadata[[1]]$pixelSize > 150, got = d$columnMetadata[[1]]$pixelSize)
   check("fmt_borders: top SOLID on row 12, bottom DOUBLE on row 13",
         identical(cell_at(rows, 12, 1)$userEnteredFormat$borders$top$style, "SOLID") &&
@@ -362,6 +398,11 @@ area_cells <- function() {
         identical(color_to_hex(sh$properties$tabColorStyle$rgbColor), "#2457C5"))
   check("get_sheet_id: finds a tab, stops on an unknown one",
         get_sheet_id(ss, t) == s && has_err(errs(get_sheet_id(ss, "NoSuchTab")), "No sheet named"))
+  apply_ok("fmt_note(text = \"\") clears the note", list(fmt_note(s, 1, 1, "")))
+  g <- grid(t, "A1:A1", "formattedValue,userEnteredFormat,note")
+  check("...the note is gone (Cells is exported to PDF later, where a note adds a page); value and fill stay",
+        is.null(cell_at(g, 1, 1)$note) && identical(cell_at(g, 1, 1)$formattedValue, "Header") &&
+          identical(hex(cell_at(g, 1, 1)$userEnteredFormat$backgroundColor), "#2457C5"))
 }
 
 # ── Area: writes (write_cell / write_block / flush_writes / read_values / gs_clear_values) ---
@@ -727,6 +768,23 @@ area_rules <- function() {
         length(del) == 9L && del[[1]]$deleteConditionalFormatRule$index == 8L && length(fmt_delete_cond_rules(SSID, sid("Q1"))) == 0L)
   apply_ok("deleting all the rules in one batch", del)
   check("count_cond_rules is 0 afterwards", count_cond_rules(SSID, s) == 0L)
+
+  # new_batch()$cf numbers the rules in listing order, so the FIRST listed wins (column E: 1 5 9 2 7 4 8 -3)
+  nb <- new_batch()
+  nb$cf(fmt_cond_number, s, 1, 8, 5, 5, 5, "greater", bg_color = COL_RED_LIGHT)     # E > 5, listed first
+  nb$cf(fmt_cond_number, s, 1, 8, 5, 5, 0, "greater", bg_color = GREEN)             # E > 0, listed second: loses on 9, 7, 8
+  nb$cf(fmt_cond_negative, s, 1, 8, 5, 5)                                           # an index-taking helper of another kind
+  apply_ok("new_batch: three overlapping rules added through $cf in one batch", nb$get())
+  e5 <- grid(t, "E1:E8")
+  lit5 <- function(col) which(vapply(1:8, function(r) hex(cell_at(e5, r, 1)$effectiveFormat$backgroundColor), "") == color_to_hex(col))
+  check("new_batch: three rules stored; where two overlap the one listed first wins (E > 5 red, 0 < E <= 5 green)",
+        count_cond_rules(SSID, s) == 3L && identical(lit5(COL_RED_LIGHT), c(3L, 5L, 7L)) && identical(lit5(GREEN), c(1L, 2L, 4L, 6L)),
+        got = list(red = lit5(COL_RED_LIGHT), green = lit5(GREEN)))
+  check("new_batch: the third rule (fmt_cond_negative through $cf) turns the -3 red",
+        identical(hex(cell_at(e5, 8, 1)$effectiveFormat$textFormat$foregroundColorStyle$rgbColor %||%
+                        cell_at(e5, 8, 1)$effectiveFormat$textFormat$foregroundColor), color_to_hex(COL_RED_TEXT)))
+  apply_ok("deleting the new_batch rules", fmt_delete_cond_rules(SSID, s))
+  check("...and the tab has no rule left", count_cond_rules(SSID, s) == 0L)
 }
 
 # ── Area: formulas (f_* builders evaluated by Sheets) ---------------------------
@@ -846,6 +904,19 @@ area_guard <- function() {
   check("kitchen build (one of every object type) on the tab that must survive", is.na(e), got = e)
   k_obj <- counts_of("Keep"); k_cell <- cells_of("Keep")
   check("...every object type is present", all(k_obj >= 1L) && all(k_cell >= 1L), got = c(k_obj, k_cell))
+  co <- gs_count_objects(SSID); ko <- co[co$tab == "Keep", ]
+  want <- c(charts = 1L, cond_rules = 1L, validated_cells = 8L, protected = 1L, filter_views = 1L, slicers = 1L,
+            banded = 1L, merges = 1L, notes = 1L, frozen_rows = 1L, frozen_cols = 0L)
+  check("gs_count_objects: the Keep row is what the kitchen build made (1 chart, 8 validated cells, 1 note, 1 frozen row, ...)",
+        identical(unlist(ko[names(want)]), want), got = unlist(ko[-1]))
+  check("...and it agrees with this file's own counters (counts_of, cells_of)",
+        identical(unname(unlist(ko[c("charts", "cond_rules", "protected", "filter_views", "slicers", "banded", "merges", "frozen_rows")])),
+                  unname(k_obj[c("charts", "cond", "protected", "views", "slicers", "banded", "merges", "frozen")])) &&
+          ko$validated_cells == k_cell[["validation"]] && ko$notes == k_cell[["notes"]])
+  check("gs_count_objects: one row per tab in tab order, the named-range count as an attribute, printed under the table",
+        inherits(co, "gs_object_counts") && identical(co$tab, googlesheets4::sheet_names(ss)) &&
+          identical(attr(co, "named_ranges"), length(api_get("namedRanges(namedRangeId)")$namedRanges)) &&
+          any(grepl("^named ranges: ", utils::capture.output(print(co)))))
   keep_same <- function() identical(counts_of("Keep"), k_obj) && identical(cells_of("Keep"), k_cell)
 
   e <- c(errs(gs_reset_tabs(ss)), errs(gs_reset_tabs(ss, NULL)), errs(gs_reset_tabs(ss, NA_character_)), errs(gs_reset_tabs(ss, character(0))))
@@ -853,10 +924,12 @@ area_guard <- function() {
   check("gs_reset_tabs: an unknown tab stops with 'no such tab'", has_err(errs(gs_reset_tabs(ss, c("Keep", "NoSuchTab"))), "no such tab"))
   check("...and nothing was wiped", keep_same())
 
-  e <- errs(kitchen("Wipe")); a <- c(counts_of("Wipe"), cells_of("Wipe"))
-  e2 <- errs(kitchen("Wipe")); b <- c(counts_of("Wipe"), cells_of("Wipe"))
+  e <- errs(kitchen("Wipe")); a <- c(counts_of("Wipe"), cells_of("Wipe")); c1 <- gs_count_objects(SSID)
+  e2 <- errs(kitchen("Wipe")); b <- c(counts_of("Wipe"), cells_of("Wipe")); c2 <- gs_count_objects(SSID)
   check("gs_reset_tabs is idempotent: the build run twice raises no HTTP 400", is.na(e) && is.na(e2), got = c(e, e2))
   check("...and both runs leave identical object counts, every type present", identical(a, b) && all(a >= 1L), got = rbind(a, b))
+  check("gs_count_objects is identical before and after the rebuild (snapshot and compare)", identical(c1, c2),
+        got = rbind(unlist(c1[c1$tab == "Wipe", -1]), unlist(c2[c2$tab == "Wipe", -1])))
 
   gs_reset_tabs(ss, "Wipe", keep_values = TRUE)
   kv <- c(counts_of("Wipe"), cells_of("Wipe"))
@@ -868,6 +941,9 @@ area_guard <- function() {
   z <- c(counts_of("Wipe"), cells_of("Wipe"))
   check("gs_reset_tabs wipes every object, the named range and every value on the named tab", all(z == 0L), got = z)
   check("...and leaves the other tab untouched", keep_same())
+  cz <- gs_count_objects(SSID)
+  check("gs_count_objects: the wiped tab reads all zero and the Keep row is unchanged",
+        all(unlist(cz[cz$tab == "Wipe", -1]) == 0L) && identical(unlist(cz[cz$tab == "Keep", -1]), unlist(ko[-1])), got = unlist(cz[cz$tab == "Wipe", -1]))
   d <- api_get("sheets(data(rowMetadata(pixelSize,hiddenByUser),columnMetadata(pixelSize,hiddenByUser)))", ranges = "Wipe!A1:K25")$sheets[[1]]$data[[1]]
   check("...and resets sizes (100px columns, 21px rows) and un-hides the grouped rows and columns",
         d$columnMetadata[[1]]$pixelSize == 100 && d$rowMetadata[[2]]$pixelSize == 21 &&
@@ -882,6 +958,25 @@ area_guard <- function() {
   check("title guard: the matching title passes", is.na(errs(gs_open_or_create(TITLE, c("Keep", "Wipe"), id = SSID))))
   check("title guard: another title passes when the file has ALL the tabs (a renamed copy)",
         is.na(errs(gs_open_or_create("Some other title", c("Keep", "Wipe"), id = SSID))) && identical(snap(), s0))
+
+  # the locale guard: flip the file's locale, call, restore it (on.exit is the backup, the restore is read back)
+  read_locale <- function() googlesheets4::gs4_get(ss)$locale
+  set_locale <- function(l) batch_format(ss, list(list(updateSpreadsheetProperties = list(properties = list(locale = l), fields = "locale"))), strict = TRUE)
+  loc0 <- read_locale(); loc1 <- if (identical(loc0, "de_DE")) "fr_FR" else "de_DE"
+  on.exit(try(set_locale(loc0), silent = TRUE), add = TRUE)
+  set_locale(loc1)
+  e <- errs(gs_open_or_create(TITLE, c("Keep", "Wipe", "LocaleNew"), id = SSID, locale = loc0))
+  check("locale guard: a reused file whose locale differs stops, naming both, before it adds a tab",
+        has_err(e, loc1) && has_err(e, loc0) && has_err(e, "Nothing was changed") &&
+          !"LocaleNew" %in% googlesheets4::sheet_names(ss) && identical(read_locale(), loc1), got = e)
+  check("locale guard: the file's own locale and NULL pass; allow_mismatch = TRUE overrides it",
+        is.na(errs(gs_open_or_create(TITLE, c("Keep", "Wipe"), id = SSID, locale = loc1))) &&
+          is.na(errs(gs_open_or_create(TITLE, c("Keep", "Wipe"), id = SSID))) &&
+          is.na(errs(gs_open_or_create(TITLE, c("Keep", "Wipe"), id = SSID, locale = loc0, allow_mismatch = TRUE))))
+  set_locale(loc0)
+  check("...and the file's locale is restored (read back) with title, tabs and values unchanged",
+        identical(read_locale(), loc0) && identical(snap(), s0), got = c(loc0, read_locale()))
+
   e <- errs(gs_open_or_create("Some other title", "GuardNew", id = SSID, allow_mismatch = TRUE, rows = c(GuardNew = 40), cols = c(GuardNew = 5)))
   p <- googlesheets4::sheet_properties(ss)
   check("allow_mismatch = TRUE reuses any file (adds the missing tab); the title is untouched",

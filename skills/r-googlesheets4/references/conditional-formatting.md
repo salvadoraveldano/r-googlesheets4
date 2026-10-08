@@ -51,6 +51,28 @@ rules <- list(
 batch_format(ss, rules, strict = TRUE)
 ```
 
+`new_batch()` does the numbering for you. Its `$cf(f, sheet_id, ...)` calls any
+`fmt_cond_*` helper as `f(sheet_id, ..., index = k)`, where `k` counts the rules
+added through `$cf` for that `sheet_id`, starting at 0. So the rule you list
+first wins, and you never type an `index`:
+
+```r
+b <- new_batch()
+b$push(fmt_cells(sid, 1, 1, 1, 9, bold = TRUE))                      # any other request
+b$cf(fmt_cond_formula, sid, 4, 200, 1, 9, '=$H4="Overdue"', bg_color = COL_RED_LIGHT)    # index 0
+b$cf(fmt_cond_number,  sid, 4, 200, 11, 11, 0.9, "greater", bg_color = COL_YELLOW_LIGHT) # index 1
+b$cf(fmt_cond_negative, sid, 4, 200, 2, 4)                                              # index 2
+batch_format(ss, b$get(), strict = TRUE)
+```
+
+The count is per `sheet_id` because rule priority is per tab, so one collector can
+hold the rules of several tabs. Use it for one build per `batch_format()` call.
+Add every conditional-format rule through `$cf`: a rule pushed with `$push` is not
+counted, uses the helpers' default `index = 0`, and where it ends up depends on
+when it was pushed (checked live: it can reorder the `$cf` rules). Rules already on
+the tab end up below the new ones (clear them first, as in the re-run section
+below). Do not pass `index` to `$cf` yourself.
+
 ## ⚠️ A custom formula cannot point at another tab by name
 
 A `CUSTOM_FORMULA` rule is rejected with HTTP 400 `Invalid

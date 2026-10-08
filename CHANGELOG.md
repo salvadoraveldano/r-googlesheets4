@@ -84,6 +84,9 @@
   stops, before adding tabs or writing, when the title is not `title` and the file lacks
   some of `tabs`. A renamed copy that has all the tabs still passes. SKILL.md and a new
   eval say never to set `allow_mismatch = TRUE` without asking the user.
+- `gs_open_or_create()` locale guard (behaviour change): on reuse, a non-`NULL` `locale`
+  that differs from the file's now stops, naming both, before any change. `NULL` skips the
+  check and `allow_mismatch = TRUE` overrides it. Before, `locale` was ignored on reuse.
 - Docs and SKILL.md that called `gs_reset_tabs(ss)` with no tabs now pass the tab names.
 
 **New helpers**
@@ -125,6 +128,17 @@
   formula in `IFERROR(..., "")`.
 - `gs_clear_values(ss, range_or_sheet)`: clear values only, one `values.clear` call; the
   formatting stays (`range_clear()` resets it by default).
+- `fmt_col_widths(sheet_id, widths, start_col = 1L)`: widths for a run of columns in one call.
+  Equal neighbours merge into one request, widths round to whole pixels (the API rejects a
+  fraction), and it returns a list, so combine it with `c()`.
+- `fmt_note(sheet_id, row, col, text)`: a cell note through `updateCells` with the mask `note`
+  alone, so the value and format stay; `""` clears it.
+- `new_batch()`: request collector with `$push()`, `$cf()` and `$get()`. `$cf(f, sheet_id, ...)`
+  numbers conditional rules per tab from 0, so the rule listed first wins.
+  `fmt_cond_negative()` gained the trailing `index` the other rule helpers already had.
+- `gs_count_objects(ss_id)`: one read-only call that counts charts, conditional rules,
+  validated cells, protections, filter views, slicers, bands, merges, notes and frozen
+  rows and columns per tab, to compare a file before and after a rebuild.
 
 **Docs, evals and tooling**
 
@@ -151,6 +165,12 @@
   checks that SKILL.md links to reference files that exist.
 - `scripts/selftest.R`: live self-test of the helpers on one scratch sheet at the default
   access level, with a PASS/FAIL table. A repo dev tool, not part of the skill folder.
+  Checks cover the four new helpers (read back from Google) and the locale guard, which
+  flips the scratch file's locale and restores it.
+- `helpers.md`, `creating-and-tabs.md`, `formatting-batchupdate.md`,
+  `conditional-formatting.md`, `qa-post-build.md`, `api-endpoints.md`: the new helpers and
+  the locale guard. `helpers.md` also notes the Sheets read quota (about 60 read requests per
+  minute per user, one call per range in `read_values()`, so large loops can hit HTTP 429).
 - Four new evals (13 to 17): `reuse-wrong-file`, `flip-and-restore`, `cross-tab-chart`,
   `share-exposure`.
 

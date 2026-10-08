@@ -43,14 +43,15 @@ ss <- gs_open_or_create("Quarterly Report", c("Cover", "Data", "Forecast"),
 | Argument | Meaning |
 |---|---|
 | `time_zone` | **Create only.** Default `Sys.timezone()` (so datetimes written from R round-trip; skipped when R cannot tell). `"Etc/GMT"` gives a neutral file with no author region; `NULL` leaves Google's default. |
-| `locale` | **Create only.** `"en_US"` makes `0.016` parse as a number and `TEXT()` formats behave. `NULL` = Google's default. |
+| `locale` | `"en_US"` makes `0.016` parse as a number and `TEXT()` formats behave. On create it sets the locale (`NULL` = Google's default). On reuse the file keeps its locale, and a non-`NULL` `locale` that differs from it stops: see the locale guard below. `NULL` skips the check. |
 | `rows`, `cols` | Grid size: one number for every tab, or a vector named by tab (an unnamed vector longer than 1 stops). Applied on **every** run; making a grid smaller deletes the cells outside it. `NULL` keeps 1000 x 26. |
-| `allow_mismatch` | **Reuse only.** Default `FALSE`: see the title guard below. `TRUE` reuses any file. |
+| `allow_mismatch` | **Reuse only.** Default `FALSE`: see the title and locale guards below. `TRUE` switches off both and reuses any file. |
 
 A reused file keeps its own time zone and locale (changing them on every rerun
 would be a surprise); update them with an `updateSpreadsheetProperties` request
-if you must. When a reuse has to add a tab that was not there, the function
-says so in a message: that usually means `SHEET_ID` points at the wrong file.
+if you must. The time zone is not checked on reuse; the locale is (locale guard,
+below). When a reuse has to add a tab that was not there, the function says so in
+a message: that usually means `SHEET_ID` points at the wrong file.
 
 **Title guard.** On reuse it reads the file once (title and tab names) BEFORE it
 adds a tab or changes anything, and stops unless the file's title is exactly
@@ -66,6 +67,26 @@ Limit: the "has all the tabs" shortcut is weak for generic tab names. A file wit
 `Summary` or `Sheet1` tab passes a script that builds only that tab, so a wrong id
 that happens to hold such a tab is not caught. Confirm the id with the user when the
 script builds only generic names.
+
+**Locale guard.** The same read also gets the file's locale. When you pass a
+non-`NULL` `locale` and the reused file reports another one (`de_DE` against
+`en_US`), it stops BEFORE it adds a tab or changes anything, naming both:
+`SHEET_ID is a file with locale 'de_DE' but this script asks for 'en_US' ...
+Nothing was changed.` Number, date and `TEXT()` formats follow the
+locale, so a build written for `en_US` would otherwise run on a file where
+decimals and dates do not read as the script expects. Either leave `locale`
+out of the call (`NULL`: no check, and the file keeps its locale), or, on a file
+the script owns, change the file's locale and run again:
+
+```r
+batch_format(ss, list(list(updateSpreadsheetProperties = list(
+  properties = list(locale = "en_US"), fields = "locale"))), strict = TRUE)
+```
+
+Changing it re-renders number and date formats on every tab, so confirm with the
+user before you do it to a file that is not the script's own. `allow_mismatch =
+TRUE` also gets past this guard, and past the title guard with it: never set it
+without asking.
 
 ## Rebuilding in place: `gs_reset_tabs()`
 
