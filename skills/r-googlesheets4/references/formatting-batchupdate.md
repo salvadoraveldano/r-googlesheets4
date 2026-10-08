@@ -20,7 +20,8 @@ batch_format(ss, requests)
 
 Each `fmt_*` helper returns one request — drop them into the `requests`
 list. **Two helpers return TWO requests** (`fmt_group_cols`, `fmt_group_rows`)
-— combine those with `c()`, not `list()`. See the warning below.
+and `fmt_tab_order` returns one per tab — combine those with `c()`, not
+`list()`. See the warning below.
 
 ## Grid coordinates are 0-based
 
@@ -65,7 +66,19 @@ fmt_cells(sheet_id = 0L, start_row = 1L, end_row = 1L, start_col = 1L, end_col =
 
 Parameters: `font_family`, `font_size`, `bold`, `italic`, `underline`,
 `font_color`, `bg_color`, `numfmt_type`, `numfmt_pattern`, `halign`,
-`valign`, `wrap`.
+`valign`, `wrap`, `numfmt`.
+
+Number format two ways: `numfmt_type` + `numfmt_pattern`, or `numfmt = list(type =
+, pattern = )`, which takes the `NUMFMT_*` constants (`NUMFMT_CURRENCY`,
+`NUMFMT_PCT`, `NUMFMT_INT`, ...) and your own formats. Giving both is an error.
+
+```r
+fmt_cells(sid, 5, 20, 3, 3, numfmt = NUMFMT_CURRENCY)                       # $1,235
+fmt_cells(sid, 5, 20, 4, 4, numfmt = list(type = "NUMBER", pattern = '0.0"x"'))  # 2.5x
+```
+
+A small local alias is enough when one build repeats a format:
+`NF <- function(p, type = "NUMBER") list(type = type, pattern = p)`.
 
 `halign` ∈ `LEFT` / `CENTER` / `RIGHT`. `valign` ∈ `TOP` / `MIDDLE` /
 `BOTTOM`. `wrap = TRUE` = WRAP, `wrap = FALSE` = OVERFLOW_CELL.
@@ -97,13 +110,17 @@ row 7 and a column-wide top border on row 8 are the same edge — whichever
 runs later in the batch wins. To preserve emphasis borders, apply them
 in a final reassertion batch after all other styling.
 
-### `updateSheetProperties` → `fmt_gridlines()` / `fmt_freeze()` / `fmt_tab_color()`
+### `updateSheetProperties` → `fmt_gridlines()` / `fmt_freeze()` / `fmt_tab_color()` / `fmt_tab_order()`
 
 ```r
 fmt_gridlines(sid, show = FALSE)
 fmt_freeze(sid, rows = 1L, cols = 0L)
 fmt_tab_color(sid, COL_BRAND)
+fmt_tab_order(ss, c("Cover", "Data", "Forecast"))   # one request per tab: use c()
 ```
+
+`fmt_tab_order()` sets the tab order from a vector of names (or of sheetIds with
+`fmt_tab_order(NULL, ids)`); see [creating-and-tabs.md](creating-and-tabs.md).
 
 ⚠️ **Freeze + merge conflict.** You cannot freeze cols that contain part
 of a merged cell. If you get HTTP 400 *"can't freeze columns which contain
@@ -135,17 +152,46 @@ batch_format(ss, all_fmt)
 
 The same applies to `fmt_group_rows()`.
 
-### `setDataValidation` → `fmt_dropdown()` / `fmt_dropdown_range()`
+### `setDataValidation` → `fmt_dropdown()` / `fmt_dropdown_range()` / `fmt_validation()`
 
-See [data-validation.md](data-validation.md).
+Dropdowns, plus number / date / text / custom-formula rules. Remember that API
+writes bypass validation. See [data-validation.md](data-validation.md).
 
 ### `addNamedRange` → `fmt_named_range()`
 
 See [named-ranges.md](named-ranges.md).
 
-### `addConditionalFormatRule` → `fmt_cond_negative()` / `fmt_cond_color_scale()`
+### `addConditionalFormatRule` → `fmt_cond_negative()` / `fmt_cond_color_scale()` / `fmt_cond_formula()` / `fmt_cond_text()` / `fmt_cond_number()`
 
 See [conditional-formatting.md](conditional-formatting.md).
+
+### `updateSpreadsheetProperties` → `fmt_theme_colors()`
+
+The spreadsheet THEME holds the accent palette. Pie and doughnut slices take
+ACCENT1, ACCENT2, ... in order, and a slice cannot be coloured individually, so
+the theme is how you choose them.
+
+```r
+batch_format(ss, list(fmt_theme_colors(
+  accent1 = "2457C5", accent2 = "1F9D8B", accent3 = "F2A33A",
+  accent4 = "7A4FB3", accent5 = "5BA8E0", accent6 = "5B6B8C",
+  font_family = "Arial")), strict = TRUE)
+```
+
+Send it before or after the charts: a chart takes its colours from the theme
+when it renders (checked live: an existing pie re-coloured when the theme
+changed). Also checked live: the colours and font read back from
+`spreadsheets.get` (`properties.spreadsheetTheme`), and a pie chart rendered in
+the new accents in an exported PDF.
+
+⚠ The API only accepts a COMPLETE theme: all nine colours and a font. So every
+colour you leave out goes back to Google's default theme (`accent1` 4285F4,
+`accent2` EA4335, `accent3` FBBC04, `accent4` 34A853, `accent5` FF6D01,
+`accent6` 46BDC6, `text` 000000, `background` FFFFFF, `link` 1155CC; checked
+against a new sheet) and `font_family` (default "Arial") replaces the theme
+font. `text`, `background` and `link` are optional arguments. Each colour is a
+hex string or an `hex_to_color()` list. Cells with their own colours are not
+touched.
 
 ### `updateCells` `note` field — cell notes
 

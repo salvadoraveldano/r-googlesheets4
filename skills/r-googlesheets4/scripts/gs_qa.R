@@ -117,45 +117,135 @@ audit_merge <- function(ss_id, sheet_id, start_col, end_col,
   FALSE
 }
 
-#' Audit charts on a tab: warns for any chart whose source range columns
+#' Audit charts: warns for any chart whose domain or series source columns
 #' overlap `hiddenByUser=TRUE` columns. Such charts render as the empty
 #' placeholder ("Add a series to start visualizing your data") with no
-#' error response — only this audit catches it.
-audit_chart_sources <- function(ss_id, sheet_id) {
+#' error response. This audit catches most cases; compare the series count you
+#' read back with the number you built (see below).
+#'
+#' Each source is checked against the hidden columns of the tab it READS FROM
+#' (its own sheetId), so a Summary chart fed by a model tab is judged on the
+#' model tab's columns. Covers basic, waterfall and pie/doughnut charts; other
+#' chart types are skipped.
+#'
+#' Seen live: while columns are hidden, the spec Sheets returns for a basic or
+#' waterfall chart lists fewer series than the chart holds (they all return on
+#' unhide), so a series in a hidden column may not show up here. A chart left
+#' with no series at all (the placeholder) is flagged for that reason. Check
+#' the series count you read back against the number you built.
+#' @param sheet_id audit charts sitting on this tab; NULL (default) = every tab
+#' @return the warning messages, invisibly (each is also raised as a warning)
+audit_chart_sources <- function(ss_id, sheet_id = NULL) {
   req <- googlesheets4::request_generate(
     endpoint = "sheets.spreadsheets.get",
     params = list(
       spreadsheetId = ss_id,
       fields = paste0(
-        "sheets(properties(sheetId),",
+        "sheets(properties(sheetId,title),",
         "data(columnMetadata(hiddenByUser)),",
         "charts(spec(title,",
-        "basicChart(domains(domain(sourceRange))),",
-        "waterfallChart(domain(data(sourceRange))))))"
+        "basicChart(domains(domain(sourceRange)),series(series(sourceRange))),",
+        "waterfallChart(domain(data(sourceRange)),series(data(sourceRange))),",
+        "pieChart(domain(sourceRange),series(sourceRange)))))"
       )
     )
   )
-  body <- httr::content(googlesheets4::request_make(req), as = "parsed")
+  resp <- googlesheets4::request_make(req)
+  httr::stop_for_status(resp)          # an error body must not pass as "no warnings"
+  body <- httr::content(resp, as = "parsed")
+  # The API omits a zero sheetId / startIndex, so default them to 0.
+  sid_of <- function(s) s$properties$sheetId %||% 0L
+  hidden <- lapply(body$sheets, function(s) {
+    cm <- if (length(s$data)) s$data[[1L]]$columnMetadata else list()
+    vapply(cm, function(c) isTRUE(c$hiddenByUser), logical(1L))
+  })
+  names(hidden) <- vapply(body$sheets, function(s) as.character(sid_of(s)), "")
+  tab <- vapply(body$sheets, function(s) s$properties$title %||% "", "")
+  names(tab) <- names(hidden)
+
   warnings_found <- list()
-  for (s in body$sheets) {
-    if (!isTRUE(s$properties$sheetId == sheet_id)) next
-    hidden <- vapply(s$data[[1L]]$columnMetadata,
-                     function(c) isTRUE(c$hiddenByUser), logical(1L))
-    for (ch in s$charts %||% list()) {
-      src <- ch$spec$basicChart$domains[[1L]]$domain$sourceRange$sources[[1L]] %||%
-             ch$spec$waterfallChart$domain$data$sourceRange$sources[[1L]]
-      if (is.null(src)) next
-      cols <- (src$startColumnIndex + 1L):src$endColumnIndex
-      if (any(hidden[cols])) {
-        msg <- sprintf("[chart QA] '%s' sources from hidden cols %s",
-                       ch$spec$title %||% "(untitled)",
-                       paste(cols[hidden[cols]], collapse = ","))
+  check <- function(chart_title, host, role, data) {
+    for (src in data$sourceRange$sources %||% list()) {
+      key <- as.character(src$sheetId %||% 0L)
+      h <- hidden[[key]]
+      if (is.null(h)) next
+      cols <- ((src$startColumnIndex %||% 0L) + 1L):(src$endColumnIndex %||% length(h))
+      cols <- cols[cols >= 1L & cols <= length(h)]      # beyond the grid: nothing to hide
+      bad <- cols[h[cols]]
+      if (length(bad)) {
+        msg <- sprintf("[chart QA] '%s' on '%s': %s reads hidden cols %s of tab '%s'",
+                       chart_title, host, role,
+                       paste(vapply(bad, col_letter, ""), collapse = ","), tab[[key]])
         warning(msg, call. = FALSE)
-        warnings_found[[length(warnings_found) + 1L]] <- msg
+        warnings_found[[length(warnings_found) + 1L]] <<- msg
       }
     }
   }
+  for (s in body$sheets) {
+    if (!is.null(sheet_id) && !isTRUE(sid_of(s) == sheet_id)) next
+    host <- s$properties$title %||% ""
+    for (ch in s$charts %||% list()) {
+      ttl <- ch$spec$title %||% "(untitled)"
+      b <- ch$spec$basicChart; w <- ch$spec$waterfallChart; p <- ch$spec$pieChart
+      for (d in b$domains %||% list()) check(ttl, host, "domain", d$domain)
+      for (x in b$series %||% list())  check(ttl, host, "series", x$series)
+      check(ttl, host, "domain", w$domain$data)
+      for (x in w$series %||% list())  check(ttl, host, "series", x$data)
+      # While columns are hidden Sheets returns fewer series than the chart holds,
+      # so the loops above can miss them; a chart with none left is the placeholder.
+      if ((!is.null(b) && !length(b$series)) || (!is.null(w) && !length(w$series))) {
+        msg <- sprintf("[chart QA] '%s' on '%s': no series left (its series read hidden columns, or none were set)",
+                       ttl, host)
+        warning(msg, call. = FALSE)
+        warnings_found[[length(warnings_found) + 1L]] <- msg
+      }
+      check(ttl, host, "domain", p$domain)
+      check(ttl, host, "series", p$series)
+    }
+  }
   invisible(warnings_found)
+}
+
+# ── Clear values, keep everything else --------------------------------------
+
+#' Clear the VALUES of a range or a whole tab and keep the rest: number
+#' formats, fills, borders, data validation and notes stay. One `values.clear`
+#' call. Use it to blank inputs before a test or a refill without losing the
+#' formatting you built.
+#'
+#' The trap it avoids: `googlesheets4::range_clear()` defaults to
+#' `reformat = TRUE`, which wipes the formatting along with the values (pass
+#' `reformat = FALSE` to keep it; this helper never touches formatting).
+#'
+#' It cannot touch another tab: the tab is always part of the range. A string
+#' without `!` is read as a tab NAME (a whole tab, quoted for you so a tab
+#' called "Q1" is not taken for cell Q1). A string with `!` is used as given, so
+#' quote a tab name that has spaces or symbols yourself. A bare "A1:F20" is
+#' refused by the API (no such tab) rather than clearing the first tab.
+#'
+#' @param ss              spreadsheet id or object
+#' @param range_or_sheet  "Data" (whole tab) or "Data!A1:F20" / "'My Tab'!A1:F20"
+#' @return the cleared range as the API reports it (invisibly)
+#' @examples
+#' gs_clear_values(ss, "Inputs")             # every value on the tab
+#' gs_clear_values(ss, "Inputs!B2:B20")      # one range
+gs_clear_values <- function(ss, range_or_sheet) {
+  if (!is.character(range_or_sheet) || length(range_or_sheet) != 1L ||
+      is.na(range_or_sheet) || !nzchar(range_or_sheet))
+    stop("[gs_clear_values] `range_or_sheet` must be one string: a tab name or 'Tab'!A1:F20",
+         call. = FALSE)
+  rng <- if (grepl("!", range_or_sheet, fixed = TRUE)) range_or_sheet else
+    sprintf("'%s'", gsub("'", "''", range_or_sheet, fixed = TRUE))
+  resp <- googlesheets4::request_make(googlesheets4::request_generate(
+    "sheets.spreadsheets.values.clear",
+    params = list(spreadsheetId = as.character(googlesheets4::as_sheets_id(ss)),
+                  range = utils::URLencode(rng, reserved = TRUE))))
+  if (httr::status_code(resp) >= 400L)
+    stop("[gs_clear_values] HTTP ", httr::status_code(resp), " for '", rng, "': ",
+         substr(httr::content(resp, as = "text", encoding = "UTF-8"), 1L, 300L), call. = FALSE)
+  done <- httr::content(resp, as = "parsed")$clearedRange
+  message(sprintf("[gs_clear_values] cleared values in %s", done))
+  invisible(done)
 }
 
 # ── Conditional-format management (idempotent re-runs) ---------------------

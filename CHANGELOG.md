@@ -11,6 +11,149 @@
 - Workflow step 6: hand off the script path and rerun command.
 - New eval `handoff-without-model`.
 
+**Fixed**
+
+- `fmt_chart_basic()`, `fmt_chart_bar()`, `fmt_chart_waterfall()`: every call answered
+  HTTP 400, because domain and series sources were not wrapped in `sourceRange`. All
+  `fmt_chart_*` now build sources through one fixed `.source_range()`.
+- `fmt_cells()` (behaviour change): the field mask is per text property
+  (`textFormat.fontSize`, `.bold`, `.italic`, `.underline`, `.fontFamily`,
+  `.foregroundColorStyle`) instead of the whole `textFormat`. Layered calls merge
+  and keep rich-text links. A preset no longer implies a reset: set `bold = FALSE`
+  (or the other property) to reset. `apply_style()` inherits this. Only a
+  hand-written `repeatCell` with the whole-object mask still wipes a link.
+- `f_sumifs()`: an operator criterion such as `">5"` or `">=10"` was left unquoted and
+  Sheets answered `#ERROR!`. `quote_criteria()` now quotes it.
+- `batch_format()` drops the names of `requests`. A named list (`lapply` over a named
+  vector) was sent as a JSON object and answered HTTP 400.
+- `write_cell()` (behaviour change): numbers and logicals go out as JSON numbers and
+  booleans. As text, `2e6` displayed as `2.00E+06` and on a `de_DE` sheet `"1234.5"`
+  was stored as -243129. `NA` writes an empty cell; `Inf`, `NULL` and a value of
+  length other than 1 stop. Text starting with `+ - @ '` gets a `'` prefix (a leading
+  `+` became a formula and a leading `'` was swallowed); a signed-number string such
+  as `"-5"` stays a number. A typed leading `'` is now escaped like any other:
+  pass `as_text = TRUE` to keep `"00123"` or `"1/2"` as text. A quote in a tab name
+  is escaped. New argument `as_text`.
+- `flush_writes()`: new `strict = FALSE`; `TRUE` stops on HTTP 400 and above. The buffer
+  is cleared once Google answers, success or error (the batch is all-or-nothing), and
+  kept when no answer arrives. The log line says "range writes".
+- `fmt_chart_waterfall()` (behaviour change): `subtotal_indices` now marks rows that ARE
+  totals (`customSubtotals` with `dataIsSubtotal`); `subtotal_is_data = FALSE` inserts a
+  computed subtotal bar instead. `customSubtotals` is omitted when there are no
+  indices. `legend` defaults to `NULL` (was `"BOTTOM_LEGEND"`) and passing it warns: the
+  API has no waterfall legend field.
+- `fmt_slicer()`: removed the `filterSpec` wrapper, which answered HTTP 400 on every
+  call; `columnIndex` and `filterCriteria` sit on the spec. `column_index` is an
+  absolute 0-based sheet column, not an offset inside `source_range`. The default sends
+  no filter criteria. New `filter_criteria` and `apply_to_pivot_tables`; the latter
+  applies to all slicers on that data range, the last one created sets it.
+- `fmt_protected_range()`: bounds default to `NULL`, which protects the whole sheet,
+  the only form that accepts the new `unprotected_ranges`. A partial set of bounds, or
+  `unprotected_ranges` on a bounded range, stops with a message instead of an HTTP 400.
+- `f_sparkline()`: numbers and logicals are written bare (`"linewidth",3`; the quoted
+  form gave `#VALUE!`), strings are quoted with embedded quotes doubled, `I()` writes a
+  value verbatim, option names are validated, `NULL` options are dropped.
+- `audit_chart_sources(ss_id, sheet_id = NULL)`: `NULL` audits every tab. Each domain and
+  series is checked against the hidden columns of the tab it reads, so cross-tab charts
+  are covered, as are waterfall and pie charts. A chart left with no series is flagged,
+  an HTTP error stops, and sources past the grid no longer crash it with `NA`. Messages
+  use column letters. Limit: a partial series loss is not detected.
+- `fmt_pivot_table()`: `sortOrder` defaults to `ASCENDING` (the API answers HTTP 400
+  "No sort order specified" without one).
+- `gs_open_or_create()`: new trailing `time_zone` (default `Sys.timezone()`), `locale`,
+  `rows` and `cols`; a reused file gets a message naming any tab it had to add. An
+  unnamed `rows` or `cols` vector longer than 1 stops. Earlier calls work unchanged.
+- `fmt_dropdown()`, `fmt_dropdown_range()`: new `input_message`.
+- `gs_reset_tabs()` resolves `ss` with `as_sheets_id()`, so a URL or dribble works.
+- `examples/budget-template.R`, `templates/scenario-engine.R`: `apply_style()` calls
+  with no `style` argument aborted; they use `fmt_cells()`.
+- Docs corrected: `fmt_cells()` no longer wipes links; the apostrophe advice applies
+  only to hand-built `values.batchUpdate` and `range_write()` values; the audit
+  catches most cases, not all; retries cover 429, 500, 502 and 503 (gargle 1.5.2),
+  not 504; `values.batchGet` with a vector of ranges fails in `request_generate()`;
+  the `LET()` scalar-context trap and the zero-denominator guard.
+
+**Safety guards**
+
+- `gs_reset_tabs(ss, tabs, keep_values = FALSE)`: `tabs` is required. Leaving it out,
+  `NULL`, `character(0)` or `NA` stops before any API call; there is no "every tab"
+  default, so a wrong `SHEET_ID` cannot wipe a whole file by accident. To reset every tab
+  pass `googlesheets4::sheet_names(ss)`. An unknown tab name still stops.
+- `gs_open_or_create()`: new trailing `allow_mismatch = FALSE`. Reusing an id now reads the
+  file's title and tabs first (one `gs4_get()`, replacing the `sheet_names()` call) and
+  stops, before adding tabs or writing, when the title is not `title` and the file lacks
+  some of `tabs`. A renamed copy that has all the tabs still passes. SKILL.md and a new
+  eval say never to set `allow_mismatch = TRUE` without asking the user.
+- Docs and SKILL.md that called `gs_reset_tabs(ss)` with no tabs now pass the tab names.
+
+**New helpers**
+
+- `gs_reset_tabs(ss, tabs, keep_values = FALSE)` (`tabs` required, see Safety guards): blank slate for rerunning a
+  build in place (charts, slicers, tables, banding, protections, filter views,
+  conditional rules, groups, named ranges, filter, merges, validation, notes, pivots,
+  formats, values, hidden rows and columns, sizes, freezes).
+- `read_values(ss, ranges, value_render)`: A1 ranges as matrices, one retried
+  `values.get` per range.
+- `write_block(ss, sheet, row, col, x, as_text)`: a matrix, data.frame or vector as
+  one buffered range.
+- `fmt_basic_filter()`: `setBasicFilter`.
+- `fmt_cond_formula()`, `fmt_cond_text_equals()`, `fmt_cond_number()`: conditional
+  rules with `index` for priority.
+- `fmt_chart_pie()`: pie, and doughnut with `donut = TRUE`.
+- `fmt_chart_*`: `anchor_sheet_id` places a chart on a different tab than its data;
+  `fmt_chart_basic()` adds `x_title`, `y_title` and per-series `line`, `point`, `label`;
+  `fmt_chart_waterfall()` adds `subtotal_labels`, `subtotal_label`, `subtotal_is_data`
+  and `data_labels`.
+- `fmt_validation()`: `setDataValidation` for number, date, text and custom-formula rules
+  (`NUMBER_BETWEEN`, `NUMBER_GREATER_THAN_EQ`, `DATE_IS_VALID`, `CUSTOM_FORMULA`,
+  `TEXT_IS_EMAIL`, ...), with `input_message` and `strict`. Checks type, value count and
+  a leading `=` before any call.
+- `fmt_cond_text(op = equals | starts_with | contains | not_contains)`;
+  `fmt_cond_text_equals()` delegates to it. `fmt_cond_color_scale()` gained `index`.
+- `fmt_cells()`: new trailing `numfmt = list(type, pattern)` (the `NUMFMT_*` constants).
+  Giving it together with `numfmt_type` or `numfmt_pattern` stops.
+- `fmt_tab_order(ss, tabs)`: one `updateSheetProperties` (index) request per tab.
+- `fmt_theme_colors()`: spreadsheet theme palette (pie and doughnut slice colours). The API
+  accepts only a complete theme, so omitted colours reset to Google's defaults.
+- `fmt_chart_basic()`, `fmt_chart_bar()`, `fmt_chart_waterfall()`, `fmt_chart_pie()`: new
+  `offset_x`, `offset_y` and `style = list(font, title_size, title_bold, title_color,
+  title_position, background, border, axis_font_size)`; `fmt_chart_basic()` also takes
+  `y_min` and `y_max` (explicit axis window). `y2_title`, `y2_min`, `y2_max` and
+  `style$legend_font_size` are accepted but have no effect (the Sheets API drops RIGHT_AXIS
+  settings and has no legend text size) and warn.
+- `color_to_hex()`: API colour list to `"#RRGGBB"`. `f_sparkline(iferror = )` wraps the
+  formula in `IFERROR(..., "")`.
+- `gs_clear_values(ss, range_or_sheet)`: clear values only, one `values.clear` call; the
+  formatting stays (`range_clear()` resets it by default).
+
+**Docs, evals and tooling**
+
+- New pitfalls rows: API writes bypass data validation; `COUNTIFS(range, "*")` matches
+  text only and skips blanks (use `"<>x"`); formulas that return `""` sort first in a
+  descending sort; `f_safe_div()` returns `""` and hides spend against a zero budget;
+  `range_clear()` resets formats; `write_block()` with a character matrix sends numbers as
+  text and drops percent and date number formats (checked live); AREA charts can drop the
+  last x-axis label when narrow; pivot-table labels render italic; PDF export repeats
+  frozen rows (`&fzr=false` in `extra` stops it, checked) and the API has no print setup. The `gs_reset_tabs()` rows use the new signature.
+- `qa-post-build.md`: "Flip-and-restore test" recipe (snapshot, flip, read, restore with
+  `on.exit()`, confirm with a read; test scripts must never leave a sheet changed).
+- `drive-integration.md` and `SECURITY.md`: what a shared sheet exposes (owner name to
+  link viewers, owner stored as editor on protected ranges, view-only
+  visitors cannot use dropdowns, link-shared sheets can be indexed).
+- `charts.md`, `data-validation.md`, `conditional-formatting.md`, `creating-and-tabs.md`,
+  `formatting-batchupdate.md`: sections for the new helpers and arguments.
+- SKILL.md: bullets on the title guard and on the data-tab / presentation-tab dashboard
+  pattern (`anchor_sheet_id`).
+- `helpers.md` now has a row for every helper, including `gs_require_level()` and
+  `write_section_header_brand()`, which had none.
+- `scripts/check.sh`: new doc-drift gate. It fails when a function in `scripts/*.R` has no
+  row in `references/helpers.md`, parses every R file under `skills/` and `examples/`, and
+  checks that SKILL.md links to reference files that exist.
+- `scripts/selftest.R`: live self-test of the helpers on one scratch sheet at the default
+  access level, with a PASS/FAIL table. A repo dev tool, not part of the skill folder.
+- Four new evals (13 to 17): `reuse-wrong-file`, `flip-and-restore`, `cross-tab-chart`,
+  `share-exposure`.
+
 ## 3.0.1 (unreleased)
 
 - **Fix:** `audit_layout()` now reports a clipped merged title as "merged cells A:D are

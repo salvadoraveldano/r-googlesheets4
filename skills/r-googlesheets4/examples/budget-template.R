@@ -42,7 +42,9 @@ build_dept <- function(dept) {
 
   # Create the spreadsheet — 3 tabs: dept summary + two raw-data tabs
   tabs <- c(dept, "People", "OPEX")
-  ss <- gs_open_or_create(sprintf("%s — FY2026 Summary", dept), tabs)
+  # One file per department: leave SHEET_ID unset for this loop, otherwise the second
+  # department hits the title guard (id = "" always creates a new file).
+  ss <- gs_open_or_create(sprintf("%s — FY2026 Summary", dept), tabs, id = "")
   sheet_write(d_people, ss, sheet = "People")
   sheet_write(d_opex,   ss, sheet = "OPEX")
 
@@ -86,9 +88,9 @@ build_dept <- function(dept) {
     fmt_merge(sid, 2, 2, 3, 6),
     apply_style(sid, 2, 2, 3, 6, STYLE_BRAND_TITLE),
     apply_style(sid, 3, 3, 3, 3, STYLE_SUBTITLE),
-    apply_style(sid, 5, 7, 6, 6,
-                numfmt_type = NUMFMT_CURRENCY$type,
-                numfmt_pattern = NUMFMT_CURRENCY$pattern)
+    fmt_cells(sid, 5, 7, 6, 6,
+              numfmt_type = NUMFMT_CURRENCY$type,
+              numfmt_pattern = NUMFMT_CURRENCY$pattern)
   )
 
   emphasis_fmt <- list(

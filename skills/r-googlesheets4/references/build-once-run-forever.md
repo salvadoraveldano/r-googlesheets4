@@ -28,7 +28,8 @@ to this skill and is not endorsed by either author.
 - Parameters (month, input CSV path, sheet id) at the top of the script or in env vars.
 - Formulas stay as formulas in the sheet, so people can read and edit them by hand.
 - No secrets in the script. Sign-in comes from the saved login or `GS_SA_JSON`.
-- `SHEET_ID` for in-place rebuilds, so refreshes do not create new files.
+- `SHEET_ID` for in-place rebuilds, so refreshes do not create new files, and
+  `gs_reset_tabs(ss, TABS)` at the start so a rerun does not stack charts or hit "already exists".
 - A header comment: what it builds, the exact rerun command, which inputs it reads.
 - Run `visual_qa()` once at build time. Routine refreshes of the same layout do not
   need it again, only when the layout changes.

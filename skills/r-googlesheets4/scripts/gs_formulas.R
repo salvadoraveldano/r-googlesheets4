@@ -51,7 +51,8 @@ f_sumifs <- function(sum_range, criteria_pairs) {
 quote_criteria <- function(x) {
   x <- as.character(x)
   # Heuristic: starts with $, A1-letter+digit, or is purely numeric → cell/number, no quotes.
-  is_ref_or_num <- grepl('^(\\$|[A-Za-z]+\\$?[0-9]|[<>=!][<>=]?[0-9.\\-])', x) ||
+  # An operator criterion such as ">5" or ">=10" is text, so it gets quoted.
+  is_ref_or_num <- grepl('^(\\$|[A-Za-z]+\\$?[0-9])', x) ||
                    grepl('^-?[0-9.]+$', x)
   if (is_ref_or_num) x else sprintf('"%s"', x)
 }
@@ -86,12 +87,51 @@ f_named <- function(expr, ...) {
   expr
 }
 
+#' API colour list(red, green, blue) (0-1 floats, as `hex_to_color()` makes) →
+#' "#RRGGBB". The reverse of `hex_to_color()`, for places that want hex text,
+#' such as a SPARKLINE `color` option. A channel the API left out counts as 0
+#' (it omits zeros), so a colour read back from a sheet works too.
+#' @examples
+#' color_to_hex(hex_to_color("#2457C5"))
+#' # → "#2457C5"
+color_to_hex <- function(color) {
+  if (!is.list(color)) stop("color_to_hex(): `color` must be list(red, green, blue)", call. = FALSE)
+  ch <- function(x) if (is.null(x)) 0L else as.integer(round(x * 255))
+  sprintf("#%02X%02X%02X", ch(color$red), ch(color$green), ch(color$blue))
+}
+
 #' SPARKLINE formula. Sheets-only feature (no Excel equivalent).
-f_sparkline <- function(range, options = list()) {
-  if (length(options) == 0L) return(sprintf('=SPARKLINE(%s)', range))
-  opt_str <- paste(sprintf('"%s","%s"', names(options), unlist(options)),
-                   collapse = ";")
-  sprintf('=SPARKLINE(%s, {%s})', range, opt_str)
+#'
+#' Option values keep their R type: numbers and logicals are written bare
+#' (`"linewidth",2`), strings are quoted with embedded `"` doubled
+#' (`"color","#2457C5"`). Wrap a value in `I()` to write it verbatim, for a cell
+#' reference or an expression: `I("$H$5")`, `I('IF(G2>1,"#E5484D","#2457C5")')`.
+#'
+#' @param range    the data, e.g. "B2:M2" (verbatim)
+#' @param options  named list of SPARKLINE options
+#' @param iferror  TRUE wraps the result in `IFERROR(..., "")`, so a row with no
+#'                 numbers shows an empty cell instead of `#N/A`
+#' @examples
+#' f_sparkline("B2:M2", list(charttype = "line", linewidth = 2, color = "#2457C5"))
+#' # → '=SPARKLINE(B2:M2, {"charttype","line";"linewidth",2;"color","#2457C5"})'
+#' f_sparkline("H2", list(charttype = "bar", max = I("$H$1"), color1 = "#18A957"))
+#' # → '=SPARKLINE(H2, {"charttype","bar";"max",$H$1;"color1","#18A957"})'
+#' f_sparkline("B2:M2", list(color = "#2457C5"), iferror = TRUE)
+#' # → '=IFERROR(SPARKLINE(B2:M2, {"color","#2457C5"}),"")'
+f_sparkline <- function(range, options = list(), iferror = FALSE) {
+  options <- Filter(Negate(is.null), options)   # list(max = NULL) means "not set"
+  if (length(options) && (is.null(names(options)) || !all(nzchar(names(options)))))
+    stop("f_sparkline(): every option needs a name", call. = FALSE)
+  lit <- function(v) {
+    if (inherits(v, "AsIs")) return(as.character(v))
+    if (is.logical(v)) return(toupper(as.character(v)))
+    if (is.numeric(v)) return(format(v, scientific = FALSE, trim = TRUE, digits = 15, decimal.mark = "."))
+    sprintf('"%s"', gsub('"', '""', as.character(v), fixed = TRUE))
+  }
+  f <- if (length(options) == 0L) sprintf('=SPARKLINE(%s)', range) else
+    sprintf('=SPARKLINE(%s, {%s})', range,
+            paste(sprintf('"%s",%s', names(options), vapply(options, lit, "")), collapse = ";"))
+  if (iferror) f_iferror(f) else f
 }
 
 #' QUERY formula — Sheets SQL-like data lookup.

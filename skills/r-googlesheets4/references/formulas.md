@@ -25,7 +25,7 @@ Or via the buffer (preferred for many cells):
 
 ```r
 write_cell(ss, "Summary", 5, 6, '=SUMIFS(Revenue!P:P,Revenue!B:B,$C$1)')
-flush_writes(ss)   # USER_ENTERED — formulas evaluate
+flush_writes(ss, strict = TRUE)   # USER_ENTERED — formulas evaluate
 ```
 
 ## Generic SUMIFS builder
@@ -148,6 +148,103 @@ gs4_formula('=IMAGE("https://example.com/logo.png")')
 time the formula evaluates (a popup in the UI). For automation, prefer
 `drive_cp` + a single-sheet model.
 
+### SPARKLINE options: numbers are numbers
+
+In a SPARKLINE options array, a number must be written bare and a string must
+be quoted. A quoted number is an error (checked live):
+`{"linewidth","3"}` gives `#VALUE!` ("option linewidth expects number values.
+But '3' is a text"), `{"linewidth",3}` draws the line. `f_sparkline()` keeps
+the R type of each option and quotes only the strings:
+
+```r
+f_sparkline("B2:M2", list(charttype = "line", linewidth = 2, color = "#2457C5"))
+# → '=SPARKLINE(B2:M2, {"charttype","line";"linewidth",2;"color","#2457C5"})'
+
+# Wrap a value in I() to write it as-is: a cell reference or an expression
+f_sparkline("H2", list(charttype = "bar", max = I("$H$1"),
+                       color1 = I('IF(H2>1,"#E5484D","#18A957")')))
+# → '=SPARKLINE(H2, {"charttype","bar";"max",$H$1;"color1",IF(H2>1,"#E5484D","#18A957")})'
+```
+
+`charttype` is one of `line`, `column`, `winloss`, `bar` (any other value is a
+`#VALUE!` that names the allowed ones). `TRUE` / `FALSE` options such as `rtl`
+are written bare too.
+
+A SPARKLINE over a row with no numbers shows `#N/A` (checked live). Pass
+`iferror = TRUE` to wrap it in `IFERROR(..., "")`, so an empty row stays an empty
+cell and a row with data still draws:
+
+```r
+f_sparkline("E3:K3", list(color = "#2457C5"), iferror = TRUE)
+# → '=IFERROR(SPARKLINE(E3:K3, {"color","#2457C5"}),"")'
+```
+
+`hex_to_color()` and the `COL_*` constants are API colours (0-1 floats), not hex
+text. `color_to_hex()` converts one back for an option like `color`:
+
+```r
+f_sparkline("B2:M2", list(color = color_to_hex(COL_RED_TEXT)))
+# → '=SPARKLINE(B2:M2, {"color","#C62828"})'
+```
+
+`color_to_hex(hex_to_color("#2457C5"))` returns `"#2457C5"`. A channel the API
+leaves out counts as 0, so a colour read back from a sheet works too.
+
+## LET, LAMBDA, MAP: array expressions are scalar inside a binding
+
+`LET`, `LAMBDA`, `MAP` and `BYROW` go through the API like any formula, but
+arithmetic or a comparison on a whole range (`E1:E5*2`, `(f>2)*(f<5)`) is only
+computed cell by cell inside `ARRAYFORMULA()` or an array-aware function such as
+`SUMPRODUCT` or `MAP`. A `LET` binding and a `LAMBDA` body do NOT supply that
+array context, so the expression is evaluated as a scalar there (the same is
+true of a bare `=SUM(E1:E5*2)`). The failure has two faces, and the quiet one
+is the dangerous one:
+
+- On a row that has no cell of the range, the cell shows `#VALUE!` ("The default
+  output of this reference is a single cell in the same row but a matching value
+  could not be found. To get the values for the entire range use the
+  ARRAYFORMULA function").
+- On a row that DOES intersect the range, Sheets silently picks that row's
+  value (implicit intersection) and returns a plausible, wrong number. A
+  burn-down sum built this way was wrong with no error anywhere.
+
+Checked live with `E1:E5` = 1..5:
+
+| Formula | Result |
+|---|---|
+| `=LET(x, E1:E5*2, SUM(x))` | typed in row 3: **6**, no error (correct: 30); on a row outside the range `#VALUE!` |
+| `=LET(f, E1:E5, g, (f>2)*(f<5), SUM(g))` | typed in row 4: **1**, no error (correct: 2); elsewhere `#VALUE!` |
+| `=LET(x, ARRAYFORMULA(E1:E5*2), SUM(x))` | 30 |
+| `=LET(f, E1:E5, g, ARRAYFORMULA((f>2)*(f<5)), SUM(g))` | 2 |
+| `=LET(x, E1:E5, SUMPRODUCT((x>2)*1))` | 3 (`SUMPRODUCT` forces array context) |
+| `=LET(x, E1:E5, SUM(--(x>2)))` | `#VALUE!` |
+| `=LET(x, E1:E5, SUM(ARRAYFORMULA(--(x>2))))` | 3 |
+| `=LET(f, LAMBDA(a, a*2), SUM(f(E1:E5)))` | `#VALUE!` |
+| `=LET(f, LAMBDA(a, ARRAYFORMULA(a*2)), SUM(f(E1:E5)))` | 30 |
+| `=SUM(MAP(E1:E5, LAMBDA(v, v*2)))` | 30 |
+| `=SUM(BYROW(E1:E5, LAMBDA(r, r*2)))` | 30 |
+| `=MAP(E1:E5, LAMBDA(v, v + SUM(E1:E5*2)))` | `#VALUE!` in every row: the inner `E1:E5*2` is scalar too |
+| `=SUM(E1:E5*2)` (no `LET` at all) | same trap; `=ARRAYFORMULA(SUM(E1:E5*2))` and `=SUMPRODUCT(E1:E5*2)` give 30 |
+
+The rules that follow:
+
+- Wrap every array-valued `LET` binding and every array expression inside a
+  `LAMBDA` body in `ARRAYFORMULA()`, or compute it with an array-aware function
+  (`SUMPRODUCT`, `MAP` and `BYROW` were checked).
+- `MAP(range, LAMBDA(v, ...))` and `BYROW` are fine for the element-wise part;
+  the trap is only what you do with a whole range *inside* the lambda.
+- Do not trust "no error" on a formula that works with ranges inside `LET`:
+  read the value back (`UNFORMATTED_VALUE`) and compare it with a number you
+  computed independently in R.
+
+A related zero-denominator trick: `(x-y)+(x<=y)` reads like "x-y, or 1 when
+x<=y", but it is 0 when `x-y = -1` (x=4, y=5 gave `#DIV/0!`). Use
+`(x-y)*(x>y)+(x<=y)`: it is `x-y` when `x>y` and 1 otherwise (10 divided by it
+gave 10 live).
+
+Both traps are also in [pitfalls.md](pitfalls.md) (`LET()` bindings evaluate in
+scalar context; `(x-y)+(x<=y)` is not a safe zero-denominator guard).
+
 ## Hyperlinks — use rich-text links, not `=HYPERLINK()`
 
 > ⚠ **API-written `=HYPERLINK()` formulas don't work on first click.** The
@@ -163,8 +260,11 @@ time the formula evaluates (a popup in the UI). For automation, prefer
   builds one request per column of links; `parse_hyperlink()` migrates
   existing `=HYPERLINK(...)` content strings. Always clickable, renders as
   the standard blue underlined link. Apply link requests in a separate batch
-  AFTER all formatting — `fmt_cells()` with any textFormat arg wipes
-  `textFormat.link`. QA by asserting `textFormat.link.uri` presence.
+  AFTER all formatting. `fmt_cells()` keeps a link (its masks are per
+  property), but a hand-written `repeatCell` with the whole-object mask
+  (`userEnteredFormat` or `userEnteredFormat.textFormat`) wipes
+  `textFormat.link`; putting links last stays the safe order. QA by asserting
+  `textFormat.link.uri` presence.
 - **`=HYPERLINK("#gid=<sheetId>&range=B5","Go to P&L")`** — only for
   intra-sheet navigation entered/re-entered by humans. The URL is a
   **literal string**: it does NOT shift when rows move — after structural

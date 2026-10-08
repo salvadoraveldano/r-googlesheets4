@@ -78,18 +78,39 @@ if (nrow(delta) > 0) sheet_append(ss, data = delta, sheet = "Log")
 `reformat = FALSE` — same idempotent-rebuild discipline as merges and
 conditional rules.)
 
-## `range_flood()` / `range_clear()`
+## `range_flood()` / `range_clear()` / `gs_clear_values()`
 
 ```r
 # Fill a range with a single value
 range_flood(ss, sheet = "Data", range = "A1:F1", cell = "HEADER")
 
-# Clear values AND formatting
+# Clear values AND formatting (reformat = TRUE is the default)
 range_clear(ss, sheet = "Data", range = "A1:F20")
 
 # Clear values only, keep formatting
-range_flood(ss, sheet = "Data", range = "A1:F20", reformat = FALSE)
+range_clear(ss, sheet = "Data", range = "A1:F20", reformat = FALSE)
 ```
+
+### ⚠️ `range_clear()` wipes formatting by default
+
+`range_clear()` and `range_flood()` default to `reformat = TRUE`, the same trap
+as `range_write()`: number formats, fills, fonts and borders in the range are
+gone. A live check showed data validation and notes surviving, but the number
+format and fill did not. To blank inputs and keep the look, use
+`gs_clear_values()` (`gs_qa.R`, after `gs_helpers.R`), which has no `reformat`
+to forget:
+
+```r
+gs_clear_values(ss, "Inputs")             # every value on the tab
+gs_clear_values(ss, "Inputs!B2:B20")      # one range
+```
+
+It is one `values.clear` call: values go, while number formats, fills, data
+validation and notes stay. The tab is always part of the range, so it cannot
+touch another tab. A bare name is a whole tab (quoted for you, so a tab called
+`Q1` is not read as cell Q1), a string with `!` is used as given (quote a name
+with spaces yourself: `"'My Tab'!B2:B20"`), and a bare `"A1:F20"` is refused
+with HTTP 400 instead of clearing the first tab.
 
 ## ⚠️ Writing dates & datetimes — the timezone trap
 

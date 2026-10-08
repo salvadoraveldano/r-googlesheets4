@@ -54,20 +54,31 @@ fmt_banding <- function(sheet_id, start_row, end_row, start_col, end_col,
 #' @param source_sheet_id sheetId of the data source
 #' @param source_range c(start_row, end_row, start_col, end_col) of source
 #' @param rows         list of list(sourceColumnOffset = 0L, showTotals = TRUE,
-#'                      sortOrder = "ASCENDING")
+#'                      sortOrder = "ASCENDING"); sortOrder defaults to
+#'                      "ASCENDING" when left out (the API requires it)
 #' @param columns      same shape as rows (omit/NULL for none)
 #' @param values       list of list(sourceColumnOffset = N, summarizeFunction =
 #'                      "SUM"|"AVERAGE"|"COUNTA"|"MAX"|"MIN", name = "Total")
-#' @param filters      named list of column-offset → list(visibleValues = ...)
+#' @param filters      named list keyed by the 0-based column offset WITHIN
+#'                      `source_range` (as a string), each value a
+#'                      PivotFilterCriteria, e.g.
+#'                      `list("5" = list(visibleValues = list("Expense")))`
+#'                      keeps only rows whose 6th source column is "Expense"
 fmt_pivot_table <- function(sheet_id, anchor_row, anchor_col,
                             source_sheet_id, source_range,
                             rows = list(), columns = list(),
                             values = list(), filters = list()) {
+  # The API rejects a row/column group without sortOrder (HTTP 400 "No sort
+  # order specified"), so default it.
+  with_sort <- function(groups) lapply(groups, function(g) {
+    if (is.null(g$sortOrder)) g$sortOrder <- "ASCENDING"
+    g
+  })
   pivot <- list(
     source = grid_range(source_sheet_id, source_range[1L], source_range[2L],
                         source_range[3L], source_range[4L]),
-    rows    = rows,
-    columns = columns,
+    rows    = with_sort(rows),
+    columns = with_sort(columns),
     values  = values,
     valueLayout = "HORIZONTAL"
   )
@@ -107,26 +118,52 @@ fmt_filter_view <- function(sheet_id, start_row, end_row, start_col, end_col,
 
 # ── Protected ranges --------------------------------------------------------
 
-#' Protect a range from edits. With `warning_only = TRUE`, edits show a
-#' warning prompt but are not blocked. Use `warning_only = FALSE` plus a
-#' non-empty `editor_emails` to enforce.
+#' Protect a range (or a whole sheet) from edits. With `warning_only = TRUE`,
+#' edits show a warning prompt but are not blocked. Use `warning_only = FALSE`
+#' plus a non-empty `editor_emails` to enforce.
+#'
+#' Leave `start_row`..`end_col` out to protect the WHOLE sheet (range =
+#' `list(sheetId = )`). That is the only form the API lets carry
+#' `unprotected_ranges`: the "protect the formulas, leave the inputs open"
+#' pattern. On a bounded range the API answers HTTP 400 ("unprotectedRanges are
+#' only allowed on ProtectedRanges covering a whole sheet"), so this helper
+#' stops early instead.
 #'
 #' @param sheet_id      sheetId
-#' @param start_row,end_row,start_col,end_col  range bounds (1-based)
+#' @param start_row,end_row,start_col,end_col  range bounds (1-based); give all
+#'                      four, or none for the whole sheet
 #' @param description   user-visible description
 #' @param warning_only  if TRUE, advisory; if FALSE, enforced (requires editors)
 #' @param editor_emails character vector of allowed editor emails (when not
 #'                      warning_only)
-fmt_protected_range <- function(sheet_id, start_row, end_row, start_col, end_col,
+#' @param unprotected_ranges  whole-sheet protection only: cells left editable,
+#'                      a list of `grid_range()` values (one `grid_range()`
+#'                      is accepted too)
+fmt_protected_range <- function(sheet_id, start_row = NULL, end_row = NULL,
+                                start_col = NULL, end_col = NULL,
                                 description = "Protected", warning_only = TRUE,
-                                editor_emails = character(0L)) {
+                                editor_emails = character(0L),
+                                unprotected_ranges = list()) {
+  bounds <- list(start_row, end_row, start_col, end_col)
+  n_null <- sum(vapply(bounds, is.null, NA))
+  if (n_null %in% 1:3)
+    stop("fmt_protected_range(): give all of start_row, end_row, start_col, end_col, or none of them (whole sheet).", call. = FALSE)
+  whole <- n_null == 4L
+  if (length(unprotected_ranges) > 0L && !whole)
+    stop("fmt_protected_range(): unprotected_ranges needs a whole-sheet protection (leave start_row..end_col out); ",
+         "the API rejects it on a bounded range.", call. = FALSE)
   pr <- list(
-    range = grid_range(sheet_id, start_row, end_row, start_col, end_col),
+    range = if (whole) list(sheetId = sheet_id)
+            else grid_range(sheet_id, start_row, end_row, start_col, end_col),
     description = description,
     warningOnly = warning_only
   )
   if (!warning_only && length(editor_emails) > 0L) {
     pr$editors <- list(users = as.list(editor_emails))
+  }
+  if (length(unprotected_ranges) > 0L) {
+    if (!is.null(unprotected_ranges$sheetId)) unprotected_ranges <- list(unprotected_ranges)  # one grid_range()
+    pr$unprotectedRanges <- unname(unprotected_ranges)
   }
   list(addProtectedRange = list(protectedRange = pr))
 }
@@ -134,27 +171,45 @@ fmt_protected_range <- function(sheet_id, start_row, end_row, start_col, end_col
 # ── Slicers -----------------------------------------------------------------
 
 #' Add a slicer (filter chip) anchored at a cell, sourced from a data range.
-#' Slicers filter charts and pivot tables that share the source.
+#' The slicer filters the ROWS of its own data range (and charts / pivot tables
+#' built on that range). It does not move cells that are formulas over the
+#' data (KPI cards, SUMIFS): drive those from a dropdown cell instead.
+#'
+#' A slicer coexists with a `setBasicFilter` on the same range. Delete one with
+#' `list(deleteEmbeddedObject = list(objectId = <slicerId>))`; read the ids back
+#' with `spreadsheets.get(fields = "sheets(slicers)")`.
 #'
 #' @param sheet_id          destination sheetId
 #' @param source_sheet_id   sheetId of the data the slicer filters
-#' @param source_range      c(start_row, end_row, start_col, end_col)
-#' @param column_index      0-based col within source the slicer filters
+#' @param source_range      c(start_row, end_row, start_col, end_col), header row first
+#' @param column_index      0-based SHEET column the slicer filters (A = 0; checked
+#'                          live: it is NOT relative to `source_range`), inside source_range
 #' @param anchor_row,anchor_col  1-based anchor for slicer top-left
 #' @param title             user-visible label
 #' @param size              c(width_px, height_px)
+#' @param filter_criteria   optional initial selection, a FilterCriteria such as
+#'                          `list(hiddenValues = list("Income"))` (values to
+#'                          HIDE; FilterCriteria has no `visibleValues`);
+#'                          NULL = no filter applied (all values shown)
+#' @param apply_to_pivot_tables  also filter pivot tables on the same data. NOT a
+#'                          per-slicer setting: it applies to ALL slicers on that
+#'                          data range, and the last slicer created sets it
 fmt_slicer <- function(sheet_id, source_sheet_id, source_range, column_index,
                        anchor_row, anchor_col, title = "Filter",
-                       size = c(200L, 30L)) {
+                       size = c(200L, 30L), filter_criteria = NULL,
+                       apply_to_pivot_tables = TRUE) {
+  # SlicerSpec has columnIndex / filterCriteria / applyToPivotTables DIRECTLY on
+  # the spec (there is no `filterSpec` wrapper: the API answers 400 Unknown name).
+  spec <- list(
+    dataRange = grid_range(source_sheet_id, source_range[1L], source_range[2L],
+                           source_range[3L], source_range[4L]),
+    columnIndex = as.integer(column_index),
+    title = title,
+    applyToPivotTables = apply_to_pivot_tables
+  )
+  if (!is.null(filter_criteria)) spec$filterCriteria <- filter_criteria
   list(addSlicer = list(slicer = list(
-    spec = list(
-      dataRange = grid_range(source_sheet_id, source_range[1L], source_range[2L],
-                             source_range[3L], source_range[4L]),
-      filterSpec = list(filterCriteria = list(visibleValues = list()),
-                        columnIndex = column_index),
-      title = title,
-      applyToPivotTables = TRUE
-    ),
+    spec = spec,
     position = list(overlayPosition = list(
       anchorCell = list(sheetId = sheet_id,
                         rowIndex = anchor_row - 1L,

@@ -45,8 +45,13 @@ community: see [Credits](#credits).
 - **Ask before installing** R packages (an explicit "just install what you need" counts as
   the yes; name the packages first). Never install R itself or run installers.
 - Never print tokens, keys or the contents of `.rds` / service-account files.
+- **A wrong `SHEET_ID` must not get your rebuild.** `gs_open_or_create()` stops, before
+  changing anything, when the file's title and tabs do not match the script. Relay the
+  message and ask the user to confirm the id. Never pass `allow_mismatch = TRUE` or
+  edit the guard out without asking.
 - **State only what you observed.** If you did not read a page image, a script or a
-  command output, say so; never describe it from the findings alone.
+  command output, say so; never describe it from the findings alone. When you report
+  a visual check, name the pages you opened and the ones you did not.
 
 ## Step 0: connect (before writing any sheet code)
 
@@ -80,9 +85,13 @@ state other than `READY` appears. Build scripts call `gs_connect()` only, never
 3. **Build** with the buffered pattern: `write_cell()` → `flush_writes()` → `batch_format()`
    ([buffered-writes.md](references/buffered-writes.md)). Create the sheet with
    `gs_open_or_create()` and rebuild with `SHEET_ID=<id>` so fix loops edit one file.
-4. **Verify cells**: `audit_chart_sources()`, `audit_merge()`, `first_visible_col()`
+   Start each rerun with `gs_reset_tabs(ss, TABS)` so charts, banding, protections and
+   named ranges do not stack or fail with "already exists" (it wipes the tabs you
+   name, so only on a file the script owns; [creating-and-tabs.md](references/creating-and-tabs.md)).
+4. **Verify cells**: `audit_chart_sources(ss_id)` (every tab; then compare each chart's
+   series count with what you built), `audit_merge()`, `first_visible_col()`
    ([qa-post-build.md](references/qa-post-build.md)). `batch_format()` does not throw
-   on HTTP errors, so re-read live state or pass `strict = TRUE`.
+   on HTTP errors, so re-read live state (`read_values()`) or pass `strict = TRUE`.
 5. **Verify the look**: `visual_qa(ss)` then read the PNGs and apply
    [visual-review-rubric.md](references/visual-review-rubric.md). Fix the build
    script, rebuild, repeat (max 3 loops). Skipping this step ships sheets whose
@@ -119,12 +128,14 @@ batch_format(ss, list(
 gs4_browse(ss)
 
 # Verify: cells, then the rendered look
-audit_chart_sources(as.character(ss), sid)
+audit_chart_sources(as.character(ss))      # every tab
 qa <- visual_qa(ss)        # qa$findings (tibble), qa$pages (PNG paths) -> Read() them
 ```
 
 Sharing and moving files (`drive_share()`, `drive_mv()`) need the `drive` access
-level; ask the user first, then use `gs_require_level()` in the script.
+level; ask the user first, then use `gs_require_level()` in the script. Put the
+exposure warnings in that same question, before the user agrees (list in
+[drive-integration.md](references/drive-integration.md#what-a-shared-sheet-exposes)).
 
 ## Theming
 
@@ -156,8 +167,10 @@ Full table in [pitfalls.md](references/pitfalls.md). These bite every new projec
    `gs4_create(timeZone = Sys.timezone())` or write ISO strings.
 9. **API-written `=HYPERLINK()` is dead on first click.** Use `link_cells_req()`
    (rich-text links) in a separate batch after all formatting.
-10. **A leading apostrophe is swallowed** by `USER_ENTERED`. Rephrase or write via
-    `updateCells` `stringValue`.
+10. **`USER_ENTERED` parses text like typing.** A leading `'` is swallowed and a
+    leading `+` becomes a formula. `write_cell()` / `write_block()` escape both and send
+    numbers as numbers (`as_text = TRUE` keeps `"00123"` as text). Only hand-built
+    `values.batchUpdate` values need the guard yourself (`range_write()` sends typed values, so it is unaffected).
 11. **Changing a merge layout breaks unmerge→merge idempotency.** Unmerge the whole
     worked area once, then apply the new merges. Prefer `fmt_auto_resize_rows()`
     (last in the batch) over pinned heights for wrapped text.
@@ -224,6 +237,8 @@ Full text in [design-principles.md](references/design-principles.md).
 7. **Guard division** with `f_safe_div()`.
 8. **Global defaults first, section overrides second** (last writer wins in a batch).
 9. **One pure formatting function per visual section.**
+10. **Data on one tab, presentation on another.** Point `fmt_chart_*` at the data tab
+    (`sheet_id`) and put the chart on the dashboard tab with `anchor_sheet_id`.
 
 ## Credits
 

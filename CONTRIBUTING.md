@@ -11,8 +11,13 @@ and no hidden installs.
 3. No real emails, sheet IDs, company names or keys in examples. Use `you@example.com`
    and `gs4_example()`.
 4. Run the checks: `claude plugin validate --strict .` and `bash scripts/check.sh`
-   (secret and branding scan).
-5. For a behavior change, add or update an eval in `skills/r-googlesheets4/evals/`.
+   (secret and branding scan, R syntax, and a gate that fails when a helper in
+   `scripts/` has no row in `references/helpers.md`).
+5. If you touched a helper, run the live self-test: `Rscript scripts/selftest.R`. It
+   needs a saved login (see [auth.md](skills/r-googlesheets4/references/auth.md)),
+   uses one scratch sheet at the default access level, and prints a PASS/FAIL table.
+   Every row must pass.
+6. For a behavior change, add or update an eval in `skills/r-googlesheets4/evals/`.
    Run evals as a dry run: give the model the skill and a scripted command output, and
    ask for an action log (the commands it would run, plus the final message). Don't ask
    for a full reasoning transcript, which can trip model safeguards.
@@ -20,5 +25,6 @@ and no hidden installs.
 ## Style
 
 - Match the surrounding R: snake_case helpers, `fmt_*` for batchUpdate request builders.
-- Document a new helper in `references/helpers.md`.
+- A new helper needs a row in `references/helpers.md` and a check in `scripts/selftest.R`.
+  `scripts/check.sh` fails if the row is missing.
 - Credit the R packages you build on (see `THIRD_PARTY_NOTICES.md`).

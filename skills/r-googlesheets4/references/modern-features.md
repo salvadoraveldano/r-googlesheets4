@@ -51,12 +51,17 @@ fmt_pivot_table(
                    showTotals = TRUE,
                    sortOrder = "ASCENDING")),
   columns = list(list(sourceColumnOffset = 2L,        # group by col 3
-                      showTotals = TRUE)),
+                      showTotals = TRUE,
+                      sortOrder = "ASCENDING")),
   values = list(list(sourceColumnOffset = 4L,         # sum col 5
                      summarizeFunction = "SUM",
                      name = "Total $"))
 )
 ```
+
+Every `rows` / `columns` group needs a `sortOrder`: the API answers HTTP 400
+"No sort order specified" without one (the helper fills in `"ASCENDING"` when
+you leave it out).
 
 `summarizeFunction` ∈ `SUM` / `AVERAGE` / `COUNTA` / `COUNT` /
 `COUNT_UNIQUE` / `MAX` / `MIN` / `MEDIAN` / `PRODUCT` / `STDEV` /
@@ -65,6 +70,72 @@ fmt_pivot_table(
 ⚠️ **Source data must be committed first.** If the pivot's
 `source_range` doesn't have data yet, the pivot renders empty. Order:
 flush data → wait briefly → batchUpdate the pivot.
+
+### Pivot filters
+
+`filters` is a **named list keyed by the 0-based column offset within
+`source_range`** (the key is a string: `"5"`, not `5`). Each value is a
+`PivotFilterCriteria`; `visibleValues` keeps only the listed values (live-checked
+below). The offset counts from the first column of `source_range`, so it moves
+if you change where `source_range` starts. (Checked live with a source range
+starting at column B: key `"0"` filtered that range's first column, and the
+sheet-column reading `"1"` gave an empty pivot. A slicer's `column_index` is the
+opposite, an absolute sheet column.)
+
+```r
+# Source Data!A1:D21 = Category, Type, Month, Amount (header on row 1).
+# Offset 1 is "Type": keep only the Expense rows.
+fmt_pivot_table(
+  sheet_id = pivot_tab_sid, anchor_row = 4L, anchor_col = 2L,
+  source_sheet_id = data_sid, source_range = c(1L, 21L, 1L, 4L),
+  rows    = list(list(sourceColumnOffset = 0L, showTotals = TRUE, sortOrder = "ASCENDING")),
+  columns = list(list(sourceColumnOffset = 2L, showTotals = TRUE, sortOrder = "ASCENDING")),
+  values  = list(list(sourceColumnOffset = 3L, summarizeFunction = "SUM", name = "Spent")),
+  filters = list("1" = list(visibleValues = list("Expense")))
+)
+```
+
+Checked live: with that filter the Income rows dropped out and the Grand Total
+equalled the sum of the Expense amounts.
+
+### Finding the rendered pivot extent
+
+The API returns the pivot's *definition* at the anchor cell, not its size, and
+the size changes with the data (a new month adds a column and pushes Grand
+Total right). To format the body, shade it or place something beside it, read
+the rendered values and measure them. `values.get` drops trailing blank rows
+and columns, so a block read from the anchor to the right edge of the sheet
+starts with the pivot; cut it at the first blank row:
+
+```r
+# Pivot anchored at B4 on a tab named "Trends"
+rng  <- utils::URLencode("'Trends'!B4:Z", reserved = TRUE)    # open-ended: down to the last row
+resp <- googlesheets4::request_make(googlesheets4::request_generate(
+  "sheets.spreadsheets.values.get",
+  params = list(spreadsheetId = as.character(ss), range = rng,
+                valueRenderOption = "UNFORMATTED_VALUE")))
+pv     <- gargle::response_process(resp)$values   # list of rows, each starting at column B
+n_rows <- match(0L, lengths(pv), nomatch = length(pv) + 1L) - 1L   # stop at the first blank row
+n_cols <- max(lengths(pv[seq_len(n_rows)]))       # pivot = B4 .. column B + n_cols - 1, row 4 + n_rows - 1
+total_row <- 4L - 1L + which(vapply(pv[seq_len(n_rows)], function(r)
+  length(r) > 0L && identical(as.character(r[[1L]]), "Grand Total"), NA))
+```
+
+Checked live on a 6-row by 7-column pivot (Category x Month with totals) with a
+caption written two rows under it: the snippet returned 6 and 7. Things that
+break the measurement: a note in a cell to the right of the pivot on one of its
+rows adds a column, and a pivot with data in its way does not render at all.
+The `batchUpdate` still returns HTTP 200 in that case, but the anchor cell shows
+an error ("Array result was not expanded because it would overwrite data in
+D6"), so a block of one row means something is in the way. Keep the area right
+of and below the pivot empty, and leave a blank row before anything under it.
+
+The range goes in the URL path, so it must be `URLencode(reserved = TRUE)`
+(the `'`, `!` and `:` otherwise break the request). Wait a few seconds after the
+pivot's `batchUpdate` before reading, and use the measured rows and columns in
+the same script for the heatmap, number format and column widths. A pivot that
+the data can widen (a new month, a new category) needs the formatting range
+a column or two wider than today's extent.
 
 ## Filter views (`addFilterView`)
 
@@ -87,10 +158,17 @@ fmt_filter_view(
 
 `criteria` keys are 0-based column indices within the range.
 
+### Basic filter (`setBasicFilter`)
+
+`fmt_basic_filter(sid, start_row, end_row, start_col, end_col)` sets the tab's
+one filter (the header-row funnel). A second call replaces it, so it is safe to
+rerun; a slicer on the same range coexists with it. `gs_reset_tabs()` clears it
+(`clearBasicFilter`).
+
 ## Protected ranges (`addProtectedRange`)
 
-Lock a range from edits. With `warning_only = TRUE`, edits show a
-warning but are not blocked. With `warning_only = FALSE` plus
+Lock a range, or a whole tab, from edits. With `warning_only = TRUE`, edits
+show a warning but are not blocked. With `warning_only = FALSE` plus
 `editor_emails`, edits are enforced.
 
 ```r
@@ -106,28 +184,98 @@ fmt_protected_range(sid, 1L, 100L, 1L, 5L,
                     editor_emails = c("admin@example.com", "lead@example.com"))
 ```
 
+### Whole tab, with the input cells left open
+
+Leave the four bounds out to protect the **whole sheet**, and pass the cells
+people may still edit as `unprotected_ranges` (a list of `grid_range()`; a
+single `grid_range()` also works). This is the "formulas are protected, inputs
+stay open" pattern:
+
+```r
+fmt_protected_range(sid,
+                    description = "Formulas. Edit only the yellow input cells",
+                    unprotected_ranges = list(grid_range(sid, 5L, 9L, 3L, 3L),    # C5:C9
+                                              grid_range(sid, 2L, 2L, 6L, 6L)))   # F2
+```
+
+The API only accepts `unprotectedRanges` on a protection that covers the whole
+sheet (a bounded range answers HTTP 400 "unprotectedRanges are only allowed on
+ProtectedRanges covering a whole sheet"), so `fmt_protected_range()` stops with
+that explanation before sending the request. A whole-sheet protection can sit
+next to bounded ones on the same tab. All of this was run live with
+`warning_only = TRUE`.
+
+Read the protections back, and remove one, by id:
+
+```r
+meta <- gargle::response_process(googlesheets4::request_make(googlesheets4::request_generate(
+  "sheets.spreadsheets.get",
+  params = list(spreadsheetId = as.character(ss), fields = "sheets(properties(title),protectedRanges)"))))
+# meta$sheets[[i]]$protectedRanges[[j]]: protectedRangeId, description, warningOnly, range, unprotectedRanges
+batch_format(ss, list(list(deleteProtectedRange = list(protectedRangeId = id))), strict = TRUE)
+```
+
+`addProtectedRange` never replaces: adding the same bounded protection twice
+leaves two, and a tab can hold only ONE whole-sheet protection (the second is
+rejected with HTTP 400 `Sheet "<tab>" already has sheet protection`). So when a
+build script is re-run in place, delete the old protections by id first.
+
 The owner of the spreadsheet always retains edit access regardless of
 the protected-range editor list.
 
 ## Slicers (`addSlicer`)
 
-Filter chips anchored at a cell, filtering charts and pivot tables that
-share the source data.
+A filter chip anchored at a cell. It filters the **rows of its own data
+range**, and charts and pivot tables built on that range. It does **not** move
+cells that are formulas over the data (KPI cards, `SUMIFS`, a `QUERY`): drive
+those from a dropdown cell instead. (Checked live with a slicer hiding rows:
+`SUM`, `SUMIFS` and even `SUBTOTAL(109, ...)` over the range still returned the
+full-range values.)
 
 ```r
 fmt_slicer(
   sheet_id = sid,
   source_sheet_id = data_sid,
-  source_range = c(1L, 1000L, 1L, 12L),
-  column_index = 2L,           # 0-based col within source the slicer filters
-  anchor_row = 1L, anchor_col = 12L,
+  source_range = c(1L, 1000L, 1L, 12L),   # header row first
+  column_index = 2L,           # 0-based SHEET column (A = 0) the slicer filters
+  anchor_row = 1L, anchor_col = 14L,
   title = "Filter by Department",
   size = c(220L, 35L)
 )
 ```
 
-Slicers stay in sync with charts as you change filters in the UI — no
-formula plumbing required on your side.
+The request shape is `addSlicer.slicer.spec = list(dataRange, columnIndex, title,
+applyToPivotTables)`: `columnIndex` (and an optional `filterCriteria`) sit
+**directly on the spec**. There is no `filterSpec` wrapper; sending one is
+rejected with HTTP 400 `Unknown name "filterSpec"` (the helper used to build it).
+
+- `column_index` is the 0-based column of the **sheet**, not an offset inside
+  `source_range`: with a source range starting at column B, `column_index = 2`
+  filters column C. (Checked live by hiding one value and reading which rows
+  went `hiddenByFilter`.) Pick a column inside the source range.
+- `filter_criteria = list(hiddenValues = list("Income"))` starts the slicer with
+  those values hidden. `FilterCriteria` has `hiddenValues` and `condition`, not
+  `visibleValues`. Omit it (the default) to start with everything shown.
+- `apply_to_pivot_tables = FALSE` keeps pivot tables on the same data out of it
+  (default `TRUE`). It is not a per-slicer setting: it applies to ALL slicers on
+  that data range, and the last slicer created sets it (checked live on one range
+  and tab: adding a `FALSE` slicer flipped an existing `TRUE` one, and deleting it
+  did not flip it back).
+- A slicer coexists with a `setBasicFilter` on the same range.
+
+Read slicers back with `fields = "sheets(slicers)"`, and delete one by id (a
+slicer is an embedded object):
+
+```r
+meta <- gargle::response_process(googlesheets4::request_make(googlesheets4::request_generate(
+  "sheets.spreadsheets.get",
+  params = list(spreadsheetId = as.character(ss), fields = "sheets(properties(title),slicers)"))))
+# meta$sheets[[i]]$slicers[[j]]: slicerId, spec (columnIndex, title, ...), position
+batch_format(ss, list(list(deleteEmbeddedObject = list(objectId = slicer_id))), strict = TRUE)
+```
+
+Slicers stack: adding the same one twice leaves two (checked live), so when a
+build script is re-run in place, delete the old ones by id first.
 
 ## Image embedding (`=IMAGE()`)
 

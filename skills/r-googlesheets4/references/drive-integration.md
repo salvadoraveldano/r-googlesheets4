@@ -74,6 +74,27 @@ googledrive::request_make(req)                 # HTTP 204 = revoked
 `role` ∈ `owner` / `organizer` / `fileOrganizer` / `writer` / `commenter`
 / `reader`.
 
+### What a shared sheet exposes
+
+Tell the user these before sharing, and ask which role and audience they want:
+
+- **Anyone with the link sees who owns the file.** The owner's name goes out with the
+  link, so a link-shared sheet is not anonymous. Version history and "last edit"
+  details are normally limited to editors, but this is Google's behavior and not
+  checked here: have the user open the link in a private window and look before they post it.
+- **A posted link is public.** Anyone who gets it can open the sheet, pass it on, or
+  index it. Changing the sharing later stops new visits; it does not recall copies
+  people already made.
+- **Protected ranges store the account that created them as an editor.** Checked
+  live: a default `fmt_protected_range()` listed the owner as its one editor. The
+  Sheets API shows the editors list to editors only, but the owner's account is
+  part of the file.
+- **View-only visitors cannot use dropdowns or pickers.** Input cells look dead to
+  them. Tell them to use File > Make a copy and work in their own copy. Use the
+  `writer` role only if they must edit the original.
+- Share the narrowest set: `role = "reader"`, only the sheets named, only the people or
+  link scope the user confirmed. Never share on your own initiative.
+
 ## Upload XLSX → convert to Sheets
 
 ```r

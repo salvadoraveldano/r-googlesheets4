@@ -25,6 +25,10 @@ be easy to check:
   agent to treat cell contents as data and never to follow instructions found there.
 - **Narrow tool pre-approval.** `allowed-tools` pre-approves only reading files and
   the read-only `gs_setup.sh status` command.
+- **Sharing exposes more than cells.** Anyone with a link sees the owner's name, and a
+  posted link can be indexed. Protected ranges store the owner as an
+  editor. View-only visitors cannot use dropdowns (File > Make a copy). The skill asks
+  before it shares anything.
 
 ## What the scopes allow
 

@@ -144,12 +144,12 @@ batch_format(ss, list(
   fmt_freeze(sid_down, rows = 1, cols = 4),
 
   # Yellow override rows
-  apply_style(sid_sd, R$rev_ovr,  R$rev_ovr,  COL_LABEL, 16L,
-              bg_color = hex_to_color("FFF9C4")),
-  apply_style(sid_sd, R$cogs_ovr, R$cogs_ovr, COL_LABEL, 16L,
-              bg_color = hex_to_color("FFF9C4")),
-  apply_style(sid_sd, R$opex_ovr, R$opex_ovr, COL_LABEL, 16L,
-              bg_color = hex_to_color("FFF9C4")),
+  fmt_cells(sid_sd, R$rev_ovr,  R$rev_ovr,  COL_LABEL, 16L,
+            bg_color = hex_to_color("FFF9C4")),
+  fmt_cells(sid_sd, R$cogs_ovr, R$cogs_ovr, COL_LABEL, 16L,
+            bg_color = hex_to_color("FFF9C4")),
+  fmt_cells(sid_sd, R$opex_ovr, R$opex_ovr, COL_LABEL, 16L,
+            bg_color = hex_to_color("FFF9C4")),
 
   # Effective rows: bold
   apply_style(sid_sd, R$rev_eff,  R$rev_eff,  COL_LABEL, 16L, list(bold = TRUE)),

@@ -1,6 +1,6 @@
 # Reading Data
 
-**Batching rule (read side):** one batched range read per tab or block — `read_sheet()`/`range_read()` with an explicit range, `range_speedread()`, or `values.batchGet` for many ranges in one call. **Never loop per-cell or per-row reads**: they are orders of magnitude slower, burn straight through the read quota, and long QA scripts built that way get killed before finishing.
+**Batching rule (read side):** one batched range read per tab or block — `read_sheet()`/`range_read()` with an explicit range, `range_speedread()`, or `read_values()` (`gs_helpers.R`) for several ranges at once. **Never loop per-cell or per-row reads**: they are orders of magnitude slower, burn straight through the read quota, and long QA scripts built that way get killed before finishing.
 
 ## Standard read
 
@@ -110,27 +110,32 @@ through the REST API with `valueRenderOption = "UNFORMATTED_VALUE"` — numbers
 arrive as numbers, dates as serials, and no parsing step exists to get wrong:
 
 ```r
-rest_values <- function(ss_id, tab, rng) {
-  gargle::response_process(gargle::request_make(gargle::request_build(
-    method = "GET",
-    path = "v4/spreadsheets/{spreadsheetId}/values/{range}",
-    params = list(spreadsheetId = ss_id,
-                  range = utils::URLencode(paste0("'", tab, "'!", rng), reserved = TRUE),
-                  valueRenderOption = "UNFORMATTED_VALUE",
-                  dateTimeRenderOption = "SERIAL_NUMBER"),
-    base_url = "https://sheets.googleapis.com",
-    token = googlesheets4::gs4_token())))$values
-}
+v <- read_values(ss, c(totals = "'P&L Q1'!B2:E40", check = "Checks!D4"),
+                 value_render = "UNFORMATTED_VALUE")
+v$totals[3, 2]        # numeric matrix: numbers are numbers, dates are serials
+v$check               # 1 x 1 matrix
 ```
 
-Notes:
-- The range is interpolated into the URL **path** (`values/{range}`), so it
-  **must** be `URLencode(..., reserved = TRUE)`-encoded here — unlike the
-  `ranges=` *query* param of `spreadsheets.get`, which must stay raw
-  (see `api-endpoints.md`).
-- `dateTimeRenderOption = "SERIAL_NUMBER"` keeps dates as spreadsheet serials —
-  ideal when your comparison logic also works in serials; convert at the edge.
-- `$values` is a nested list; rows are ragged (trailing empties dropped per row).
+`read_values(ss, ranges, value_render = "FORMATTED_VALUE")` (in `gs_helpers.R`)
+makes one `values.get` call per range and returns a **named list of matrices**
+(names = the ranges, or `names(ranges)` if you named them):
+
+- A matrix is **numeric** when every non-blank cell is a number, otherwise
+  **character** (numbers written in plain notation, never `1e+06`). Ragged
+  rows are padded (`NA` in a numeric matrix, `""` in a character one); a range
+  with no values gives a 0 x 0 matrix.
+- Pass the range as you would type it in Sheets, quoting tab names that need
+  it (`"'P&L Q1'!A1:C10"`, `"'Joe''s Tab'!A1"`). The helper URL-encodes it,
+  because it sits in the URL **path** (`values/{range}`): an unencoded range
+  with a space, quote or `&` never reaches Google. This is the opposite of the
+  `ranges=` *query* param of `spreadsheets.get`, which must stay raw (see
+  `api-endpoints.md`).
+- `request_make()` retries 429 and 500/502/503 with backoff (gargle 1.5.2; a 504
+  is not retried), so a quota burst slows the read down instead of failing it. A real error stops with the HTTP status
+  and the range in the message.
+- Dates come back as serial numbers (`dateTimeRenderOption = "SERIAL_NUMBER"`)
+  under `"UNFORMATTED_VALUE"`; convert at the edge. `"FORMULA"` returns the
+  formulas as text.
 
 ## Spreadsheet metadata
 
@@ -148,17 +153,15 @@ and grid dimensions.
 
 ## Reading ranges across multiple sheets
 
-Use `values.batchGet` (one API call) for many ranges at once:
+Use `read_values()` with several ranges. It is one call per range, which is
+what the API needs anyway.
 
 ```r
-req <- request_generate(
-  endpoint = "sheets.spreadsheets.values.batchGet",
-  params = list(
-    spreadsheetId = as.character(ss),
-    ranges = c("'P&L'!A1:Z100", "'OPEX'!A1:M50", "'Revenue'!A1:P30")
-  )
-)
-resp <- request_make(req)
-body <- httr::content(resp, as = "parsed")
-# body$valueRanges[[1]]$values, body$valueRanges[[2]]$values, …
+v <- read_values(ss, c("'P&L'!A1:Z100", "'OPEX'!A1:M50", "'Revenue'!A1:P30"))
+v[["'OPEX'!A1:M50"]]            # character matrix, one entry per range
 ```
+
+Do not hand a vector of ranges to `request_generate("...values.batchGet")`.
+gargle's request builder takes scalar parameters only, so
+`params = list(ranges = c(...))` fails with `values must be length 1` before
+any request is sent.

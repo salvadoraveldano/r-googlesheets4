@@ -78,8 +78,17 @@ you wrote to and assert `hiddenByUser` is `FALSE`.
 ### 6. For every chart added, audit source-range columns.
 
 ```r
-audit_chart_sources(SS_ID, sid)
+audit_chart_sources(SS_ID)        # default: every tab, so cross-tab dashboards are covered
+audit_chart_sources(SS_ID, sid)   # optional 2nd argument narrows it to the charts on ONE tab
 ```
+
+Use the one-argument form after a build. Passing the dashboard tab's id as the
+second argument skips the charts that sit on other tabs.
+
+Each domain and series is checked against the hidden columns of the tab it
+READS FROM, so the all-tabs form covers cross-tab dashboards. The audit catches
+most cases, not a partial series loss (Sheets then returns fewer series than the
+chart holds): compare the series count you read back with the number you built.
 
 Sheets silently falls back to the empty-state placeholder
 (`"Add a series to start visualizing your data"`) when a chart's
@@ -105,7 +114,7 @@ the cells alone will not catch this.
 ```r
 ss_id  <- as.character(ss)
 sid    <- get_sheet_id(ss, TAB)
-audit_chart_sources(ss_id, sid)
+audit_chart_sources(ss_id)                       # every tab
 stopifnot(first_visible_col(ss_id, sid) <= 1L)   # title col is visible
 stopifnot(audit_merge(ss_id, sid, 3L, 8L, 100L)) # title merge has space
 cat("[QA] post-build checks passed\n")
@@ -149,6 +158,54 @@ Two gotchas on this endpoint:
   through `request_make()`; this is a bare `httr::GET`). `export_sheet_as_pdf()`
   retries with linear backoff (5 tries, `Sys.sleep(15 * try_i)`). When exporting
   many tabs in a loop, also sleep ~10s between tabs to stay under the burst limit.
+
+## Flip-and-restore test: does the input really drive the outputs?
+
+Reading cells proves the values are there. It does not prove that a dropdown or
+input cell is wired to the outputs. Flip the input through the API, read what
+depends on it, and put the input back:
+
+```r
+flip_test <- function(ss, tab, row, col, options, outputs) {
+  cell <- sprintf("'%s'!%s%d", tab, col_letter(col), row)
+  snap <- read_values(ss, cell, value_render = "FORMULA")[[cell]]   # snapshot BEFORE any change
+  orig <- if (length(snap)) snap[1, 1] else NA                      # a formula stays a formula; NA = was empty
+  put  <- function(v) { write_cell(ss, tab, row, col, v); flush_writes(ss, strict = TRUE) }
+  on.exit({ put(orig); message("restored ", cell) }, add = TRUE)    # runs even if a read below fails
+  stats::setNames(lapply(options, function(o) {
+    put(o)
+    read_values(ss, outputs, value_render = "UNFORMATTED_VALUE")[[1]]
+  }), options)
+}
+
+res <- flip_test(ss, "Summary", 5, 3, c("Low", "Base", "High"), "Summary!C8:C9")
+print(res)                                       # outputs per option: they must differ
+back <- read_values(ss, "Summary!C5", value_render = "FORMULA")[[1]]
+stopifnot(identical(back[1, 1], "Base"))         # confirm the restore with a read, not with the log line
+```
+
+Rules:
+
+- **Snapshot first, restore in a finally-style step.** `on.exit()` inside a function (or
+  `tryCatch(..., finally = )`) restores the input even when a read fails; a restore
+  written after the reads is skipped by the first error. Then read the cell back and
+  compare it with the snapshot.
+- **A test script must never leave a sheet changed.** If the restore itself fails,
+  tell the user which cell was changed and what its original value was.
+- **Stay at the default access level.** Do not raise it for this test. A copy of the
+  whole file (`drive_cp()`) needs the `drive` level, so it is only an option if the
+  user already granted it. A scratch copy of one tab (`sheet_copy()`) works at the
+  default level when the outputs sit on that same tab; formulas on the copy that point
+  at other tabs still read the originals. Otherwise flip only the one input cell of the
+  live tab, with the `on.exit()` restore above.
+- **Text that looks like a number** (an ID such as `"00123"`) comes back as a number from
+  `write_cell(orig)`. If the snapshot is such a string, restore it with `as_text = TRUE`.
+- **Flip only through values the dropdown lists.** API writes bypass validation (see
+  [pitfalls.md](pitfalls.md)), so an unlisted value goes in without complaint and tests nothing real.
+- **Do not clear to reset.** `range_clear()` resets the formatting by default. To blank
+  values use `gs_clear_values()` or `range_clear(reformat = FALSE)`.
+- Check that the outputs differ between options (`stopifnot(!identical(res$Low, res$High))`);
+  all options giving the same numbers is the failure this test exists to catch.
 
 ## Format audits worth adding to the checklist
 
@@ -196,5 +253,6 @@ for (rr in rows) {
 ```
 
 Build links with `link_cells_req()` (gs_helpers.R), applied in a separate
-batch AFTER all formatting — any later `fmt_cells()` textFormat write erases
-`textFormat.link`.
+batch AFTER all formatting. `fmt_cells()` keeps a link, but a hand-written
+`repeatCell` with the whole-object mask (`userEnteredFormat` or
+`userEnteredFormat.textFormat`) erases `textFormat.link`.

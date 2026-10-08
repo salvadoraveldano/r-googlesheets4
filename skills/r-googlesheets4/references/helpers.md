@@ -4,19 +4,24 @@ Every helper shipped in `scripts/`. Source order and the few that matter most ar
 
 | Helper                  | File              | What it does                                                      |
 |-------------------------|-------------------|-------------------------------------------------------------------|
-| `gs_open_or_create(title, tabs)` | gs_helpers.R | Create the sheet, or reuse the one in `SHEET_ID` (adds missing tabs). Use it so each rebuild edits one file instead of orphaning a new one |
+| `gs_open_or_create(title, tabs, id, time_zone, locale, rows, cols, allow_mismatch = FALSE)` | gs_helpers.R | Create the sheet, or reuse the one in `SHEET_ID` (adds missing tabs and says so). Use it so each rebuild edits one file instead of orphaning a new one. `time_zone` (default `Sys.timezone()`) and `locale` apply on create only; `rows` / `cols` (one number, or a vector named by tab) resize the grid on every run. **Title guard:** on reuse it stops, before changing anything, when the file's title is not `title` and the file lacks some of `tabs` (a wrong `SHEET_ID`). A renamed copy that has all the tabs passes. `allow_mismatch = TRUE` reuses any file: never set it without asking the user |
+| `gs_reset_tabs(ss, tabs, keep_values = FALSE)` | gs_helpers.R | Blank slate so a build reruns in place (`SHEET_ID=<id>`): deletes charts, slicers, tables, banding, protections, filter views, cond. rules, groups and the tabs' named ranges; clears filter, merges, validation, notes, pivots, formats, values; unhides, resets sizes, unfreezes. **`tabs` is required** (a character vector of tab names; omitting it, `NULL` or `NA` stops before any call). For every tab say so: `gs_reset_tabs(ss, googlesheets4::sheet_names(ss))`. ⚠ Wipes the tabs; deleting a named range turns its formulas into `#REF!` for good |
+| `read_values(ss, ranges, value_render)` | gs_helpers.R | Read A1 ranges as matrices (numeric if all numbers, else character), one `values.get` per range, URL-encoded, retried. Named list; `"UNFORMATTED_VALUE"` or `"FORMULA"` via `value_render`. Use it instead of `values.batchGet` with a vector (fails) |
 | `gs_connect()`          | gs_helpers.R      | Auth googlesheets4 + googledrive from the login saved by `gs_setup.sh` (arg → `GS_EMAIL` → config file); fails fast with the fix command, never opens a browser |
+| `gs_require_level(what, levels = "drive")` | gs_helpers.R | Stop with the exact fix when the current `GS_SCOPE_LEVEL` is not in `levels`. Put it in front of `drive_share()`, `drive_mv()` and other Drive calls; it never raises the level itself |
 | `hex_to_color()`        | gs_helpers.R      | Hex string → API 0-1 float RGB color                              |
 | `grid_range()`          | gs_helpers.R      | 1-based row/col → 0-based GridRange                               |
 | `col_letter()`          | gs_helpers.R      | Column index → A1 letter(s)                                       |
 | `get_sheet_id()`        | gs_helpers.R      | Tab name → numeric sheetId                                        |
-| `fmt_cells()`           | gs_helpers.R      | repeatCell — font, fill, numfmt, alignment                        |
+| `fmt_cells(..., numfmt = NULL)` | gs_helpers.R | repeatCell — font, fill, numfmt, alignment. One mask per property, so layered calls merge (a later `font_size` keeps bold, colour, fill, links); reset with an explicit `bold = FALSE`. Number format: `numfmt = NUMFMT_PCT` (any `list(type, pattern)`), or `numfmt_type` + `numfmt_pattern`; giving both stops |
 | `fmt_merge()`           | gs_helpers.R      | mergeCells (⚠ can't span a frozen column — see gotcha #6)         |
 | `fmt_unmerge()`         | gs_helpers.R      | unmergeCells — pair with `fmt_merge()` (unmerge→merge) to re-apply merges idempotently |
 | `fmt_borders()`         | gs_helpers.R      | updateBorders — top/bottom/left/right/inner                       |
 | `fmt_gridlines()`       | gs_helpers.R      | Hide/show gridlines on a sheet                                    |
 | `fmt_freeze()`          | gs_helpers.R      | Freeze top N rows or left N cols                                  |
 | `fmt_tab_color()`       | gs_helpers.R      | Tab color in the bottom strip                                     |
+| `fmt_tab_order(ss, tabs)` ⚠ | gs_helpers.R | Put tabs in a given order: one `updateSheetProperties` per tab (returns a list: use `c()`). `tabs` = tab names (one `sheet_properties()` call) or numeric sheetIds with `ss = NULL`; tabs left out follow in their old order; unknown or repeated names stop before anything is sent |
+| `fmt_theme_colors(accent1..accent6, text, background, link, font_family)` | gs_helpers.R | `updateSpreadsheetProperties` request for the theme palette; pie and doughnut slices take ACCENT1, ACCENT2... in order. The API accepts only a COMPLETE theme, so any colour you leave out resets to Google's default. Hex strings or `hex_to_color()` lists |
 | `fmt_col_width()`       | gs_helpers.R      | Column width in pixels                                            |
 | `fmt_row_height()`      | gs_helpers.R      | Row height in pixels                                              |
 | `fmt_auto_resize_rows()`| gs_helpers.R      | Auto-fit row heights to wrapped content (overrides pinned heights — place LAST in batch) |
@@ -24,20 +29,27 @@ Every helper shipped in `scripts/`. Source order and the few that matter most ar
 | `parse_hyperlink()`     | gs_helpers.R      | `=HYPERLINK("url","label")` content string → list(url, label) — migrate formula links to `link_cells_req()` |
 | `fmt_group_cols()` ⚠   | gs_helpers.R      | Group + hide columns (returns 2 requests — use `c()` not `list()`) |
 | `fmt_group_rows()` ⚠   | gs_helpers.R      | Group + hide rows (returns 2 requests — use `c()` not `list()`)    |
-| `fmt_dropdown()`        | gs_helpers.R      | Data-validation dropdown from a list (renders as **Arrow** — see [data-validation.md](data-validation.md) for chip-style via Tables API) |
-| `fmt_dropdown_range()`  | gs_helpers.R      | Dropdown sourced from a sheet range (ONE_OF_RANGE)                |
+| `fmt_dropdown(..., values, input_message)` | gs_helpers.R | Data-validation dropdown from a list (renders as **Arrow** — see [data-validation.md](data-validation.md) for chip-style via Tables API); optional `input_message` hint |
+| `fmt_dropdown_range(..., source_range, input_message)` | gs_helpers.R | Dropdown sourced from a sheet range (ONE_OF_RANGE); optional `input_message` |
+| `fmt_validation(..., type, values, input_message, strict, show_custom_ui)` | gs_helpers.R | Number, date, text and custom-formula validation (`NUMBER_BETWEEN`, `NUMBER_GREATER_THAN_EQ`, `DATE_IS_VALID`, `CUSTOM_FORMULA`, `TEXT_IS_EMAIL`, ...). Checks the type and the number of `values` before any call. ⚠ Validation guards typing in the UI only: values written through the API bypass it ([data-validation.md](data-validation.md)) |
+| `fmt_basic_filter()`    | gs_helpers.R      | setBasicFilter — the tab's one filter, replaced on each call (idempotent) |
 | `fmt_named_range()`     | gs_helpers.R      | addNamedRange                                                     |
 | `fmt_cond_negative()`   | gs_helpers.R      | Red-text rule for negative values                                 |
-| `fmt_cond_color_scale()`| gs_helpers.R      | Gradient rule (green → yellow → red)                              |
-| `batch_format()`        | gs_helpers.R      | Send a list of requests in ONE batchUpdate (logs HTTP status; `strict=TRUE` stops on ≥400) |
-| `write_cell()`          | gs_buffer.R       | Buffer one cell write (no API call)                               |
-| `flush_writes()`        | gs_buffer.R       | Flush all buffered writes in ONE values.batchUpdate               |
+| `fmt_cond_color_scale(..., index = 0L)` | gs_helpers.R | Gradient rule (green → yellow → red); `index` is the rule's priority |
+| `fmt_cond_formula()`    | gs_helpers.R      | Custom-formula rule (`formula` must start with `=`); `bg_color`, `font_color`, `bold`, `index` (priority; default 0 = last added wins). A cross-tab ref 400s: echo the value into a same-tab cell, or use `INDIRECT()` |
+| `fmt_cond_text(..., op, text)` | gs_helpers.R | Text rule: `op` = `equals` / `starts_with` / `contains` / `not_contains`; pass `text` by name (it follows `op`); case-insensitive; same format args and `index`. `not_contains` also lights empty cells |
+| `fmt_cond_text_equals()`| gs_helpers.R      | Rule for cells equal to `text`; same format args and `index` (`fmt_cond_text(op = "equals")`) |
+| `fmt_cond_number()`     | gs_helpers.R      | Rule on a number: `value`, `op` = `greater` / `less` / `greater_eq` / `less_eq`; same format args and `index` |
+| `batch_format()`        | gs_helpers.R      | Send a list of requests in ONE batchUpdate (logs HTTP status; `strict=TRUE` stops on ≥400). Names on the list are dropped, so `lapply` over a named vector works |
+| `write_cell(ss, sheet, row, col, value, as_text)` | gs_buffer.R | Buffer one cell write (no API call). Numbers go out as numbers, `NA` as an empty cell; text starting `+ - @ '` is escaped; `as_text = TRUE` keeps `"00123"` as text; `Inf`, `NULL`, length ≠ 1 stop |
+| `write_block(ss, sheet, row, col, x, as_text)` | gs_buffer.R | Buffer a matrix, data.frame or vector as ONE range entry (no header written; a data.frame keeps column types). Same cell rules as `write_cell()` |
+| `flush_writes(ss, strict = FALSE)` | gs_buffer.R | Flush all buffered writes in ONE values.batchUpdate. `strict = TRUE` stops on HTTP ≥400; the buffer is cleared once Google answers, kept if no answer arrives |
 | `clear_writes()`        | gs_buffer.R       | Empty the buffer without flushing (abort a partial build)         |
 | `apply_style()`         | gs_buffer.R       | Apply a `STYLE_*` preset with optional overrides                  |
 | `write_section_header()`| gs_buffer.R       | Buffered section-header writer + format requests                  |
 | `STYLE_BODY` etc.       | gs_buffer.R       | Reusable style bundles                                            |
 | `first_visible_col()`   | gs_qa.R           | First non-hidden column (use before placing title text)           |
-| `audit_chart_sources()` | gs_qa.R           | Warn for charts whose source range overlaps hidden cols           |
+| `audit_chart_sources(ss_id, sheet_id = NULL)` | gs_qa.R | Warn for charts (basic, waterfall, pie) whose domain or series sits in hidden cols of the tab it reads. `sheet_id = NULL` audits every tab, cross-tab charts included. Catches most cases, not a partial series loss: compare the series count read back with what you built |
 | `audit_merge()`         | gs_qa.R           | Check a merged range has enough visible width                     |
 | `count_cond_rules()`    | gs_qa.R           | Count existing conditional rules (always check before deleting)   |
 | `fmt_delete_cond_rules()`| gs_qa.R          | Delete ALL existing cond rules (counts first, deletes descending) — for idempotent re-runs |
@@ -45,6 +57,7 @@ Every helper shipped in `scripts/`. Source order and the few that matter most ar
 | `safe_locale_date()`    | gs_qa.R           | Format a date in English regardless of LC_TIME                    |
 | `parse_num()`           | gs_qa.R           | Strip `$` / commas / `%` → numeric (robust parse of read-back text cells) |
 | `export_sheet_as_pdf()` | gs_qa.R           | Export one tab to a local PDF (print layout) |
+| `gs_clear_values(ss, range_or_sheet)` | gs_qa.R | Clear the VALUES of a tab (`"Inputs"`) or a range (`"Inputs!B2:B20"`) with one `values.clear` call and keep formats, validation and notes. Use it instead of `range_clear()`, whose default `reformat = TRUE` wipes the formatting |
 | `audit_layout()`        | gs_visual_qa.R    | On-screen layout audit of one tab: truncated text, `###`, narrow/wide cols, short rows, hidden content, contrast → findings tibble |
 | `visual_qa()`           | gs_visual_qa.R    | Layout audit + PDF export + page PNGs for every tab; then follow [visual-review-rubric.md](visual-review-rubric.md) |
 | `pdf_to_pngs()`         | gs_visual_qa.R    | Rasterize a PDF with `pdftoppm`/`pdftools` if present (never installs) |
@@ -54,15 +67,18 @@ Every helper shipped in `scripts/`. Source order and the few that matter most ar
 | `f_named()`             | gs_formulas.R     | Interpolate named-range refs into a formula (`{driver}` placeholders) |
 | `fraw()`                | gs_formulas.R     | Strip leading `=` to combine formula builders without `==`        |
 | `f_query()`             | gs_formulas.R     | QUERY formula builder                                             |
-| `f_sparkline()`         | gs_formulas.R     | SPARKLINE formula with options (Sheets-only)                      |
-| `fmt_chart_basic()`     | gs_charts.R       | LINE / COLUMN / AREA / SCATTER / COMBO chart                      |
-| `fmt_chart_bar()`       | gs_charts.R       | BAR (horizontal) chart with BOTTOM_AXIS forced                    |
-| `fmt_chart_waterfall()` | gs_charts.R       | Waterfall chart                                                   |
+| `f_sparkline(range, options, iferror = FALSE)` | gs_formulas.R | SPARKLINE formula with options (Sheets-only). Numbers and logicals bare, strings quoted, `I("$H$5")` verbatim, `NULL` options dropped; `iferror = TRUE` wraps it in `IFERROR(..., "")` so a row with no numbers shows an empty cell, not `#N/A` |
+| `color_to_hex(color)`   | gs_formulas.R     | API colour `list(red, green, blue)` → `"#RRGGBB"`; the reverse of `hex_to_color()`, for SPARKLINE colour options and other hex text |
+| `fmt_chart_basic(..., anchor_sheet_id, x_title, y_title, y_min, y_max, offset_x, offset_y, style)` | gs_charts.R | LINE / COLUMN / AREA / SCATTER / COMBO chart. `anchor_sheet_id` puts the chart on another tab than its data; series entries take `color`, `axis`, `type`, `line`, `point`, `label`. `y_min` / `y_max` fix the left-axis window; `offset_x` / `offset_y` shift the chart inside its anchor cell; `style = list(font, title_size, title_bold, title_color, title_position, background, border, axis_font_size)` sets the look (see [charts.md](charts.md)). ⚠ `y2_title`, `y2_min`, `y2_max` and `style$legend_font_size` are accepted but have no effect (the API drops them) and warn |
+| `fmt_chart_bar()`       | gs_charts.R       | BAR (horizontal) chart with BOTTOM_AXIS forced; takes every `fmt_chart_basic()` arg, `style` and offsets included |
+| `fmt_chart_waterfall()` | gs_charts.R       | Waterfall chart. `subtotal_indices` marks rows that ARE totals (`subtotal_is_data = FALSE` inserts a computed bar instead); also `subtotal_labels`, `subtotal_label`, `data_labels`, `anchor_sheet_id`, `offset_x`, `offset_y`, `style`. No axis titles; `legend` is ignored (warns) |
+| `fmt_chart_pie()`       | gs_charts.R       | Pie, or doughnut with `donut = TRUE` (`pie_hole`); `domain_range` and `data_range` start on data rows; `anchor_sheet_id`, `offset_x`, `offset_y`, `style`. Slice colours come from the theme: `fmt_theme_colors()` |
 | `fmt_banding()`         | gs_modern.R       | Banded range — alternating row colors                             |
-| `fmt_pivot_table()`     | gs_modern.R       | Pivot table at an anchor cell                                     |
+| `fmt_pivot_table()`     | gs_modern.R       | Pivot table at an anchor cell (`sortOrder` defaults to ASCENDING; the API 400s without one) |
 | `fmt_filter_view()`     | gs_modern.R       | Saved per-user filter view                                        |
-| `fmt_protected_range()` | gs_modern.R       | Lock a range from edits                                           |
-| `fmt_slicer()`          | gs_modern.R       | Slicer chip (filters charts/pivots)                               |
+| `fmt_protected_range()` | gs_modern.R       | Lock a range from edits. Leave all four bounds out to protect the WHOLE sheet; only then `unprotected_ranges = list(grid_range(...))` leaves input cells open |
+| `fmt_slicer(..., filter_criteria, apply_to_pivot_tables)` | gs_modern.R | Slicer chip (filters charts/pivots). `column_index` is an absolute 0-based sheet column; `filter_criteria = list(hiddenValues = ...)` sets the start state; `apply_to_pivot_tables` is shared by all slicers on one data range |
 | `fmt_image_cell()`      | gs_modern.R       | Embed an image via `=IMAGE()` or overlay                          |
 | `fmt_find_replace()`    | gs_modern.R       | Bulk find/replace across a sheet/spreadsheet                      |
 | `fmt_auto_resize_cols()`| gs_modern.R       | Auto-fit column widths to content (batchable)                     |
+| `write_section_header_brand()` | brand.R | `write_section_header()` in the `brand.R` palette (`alt = TRUE` for the deeper second-level colour); source `brand.R` after `gs_buffer.R` |
