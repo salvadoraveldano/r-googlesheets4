@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for helping. This skill stays small on purpose: one skill, plain R scripts,
-no hidden installs.
+Thanks for contributing. The skill is small on purpose: one skill, plain R scripts
+and no hidden installs.
 
 ## Before you open a pull request
 
@@ -14,8 +14,8 @@ no hidden installs.
    (secret and branding scan).
 5. For a behavior change, add or update an eval in `skills/r-googlesheets4/evals/`.
    Run evals as a dry run: give the model the skill and a scripted command output, and
-   ask for an action log (commands it would run plus the final message). Asking for a
-   full reasoning transcript can trip model safeguards.
+   ask for an action log (the commands it would run, plus the final message). Don't ask
+   for a full reasoning transcript, which can trip model safeguards.
 
 ## Style
 

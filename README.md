@@ -2,14 +2,15 @@
 
 **Build, format and visually QA Google Sheets from R, driven by your AI coding agent.**
 
-Ask for a styled multi-tab P&L, a KPI dashboard or a budget model. The agent writes
-R with [googlesheets4](https://googlesheets4.tidyverse.org), formats it through the
-Sheets API, then **exports the sheet to PDF and reviews how it looks**: truncated
-text, `###` numbers, too-narrow columns, misalignment. It fixes what it finds and
-checks again.
+Ask your coding agent for a styled multi-tab P&L, a KPI dashboard or a budget model.
+It writes R with [googlesheets4](https://googlesheets4.tidyverse.org) and formats the
+sheet through the Sheets API. Then it exports the sheet to PDF and looks at the pages for
+truncated text, `###` numbers, too-narrow columns and misaligned cells. It fixes
+what it finds and checks again.
 
-> Unofficial community skill. Not affiliated with or endorsed by Posit, the
-> tidyverse team or Google. Built on their open-source work; see [Credits](#credits).
+> Unofficial community skill. Posit, the tidyverse team and Google have not endorsed
+> it and are not affiliated with it. It builds on their open-source work; see
+> [Credits](#credits).
 
 ## Install
 
@@ -30,15 +31,15 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 
 ## What you need
 
-- **R** (never installed for you). No R? See [no-r-alternatives](skills/r-googlesheets4/references/no-r-alternatives.md).
-- The CRAN packages googlesheets4, googledrive, gargle (the skill **asks** before installing).
-- A Google account. The first sign-in is one click; no Google Cloud project needed.
+- **R**. The skill never installs it for you. No R? See [no-r-alternatives](skills/r-googlesheets4/references/no-r-alternatives.md).
+- The CRAN packages googlesheets4, googledrive and gargle. The skill asks before installing them.
+- A Google account. The first sign-in is one click and needs no Google Cloud project.
 
-> **Using it a lot, or with a team?** The one-click sign-in uses a client shared by
-> every googlesheets4 user, and its quota is shared too. Please register your own
-> OAuth client (or a service account for unattended runs) once you rebuild sheets
-> often or run it for a team. It takes a few minutes and keeps the shared client
-> healthy for everyone. Steps: [auth.md](skills/r-googlesheets4/references/auth.md).
+> **Using it a lot, or with a team?** The one-click sign-in uses an OAuth client that
+> every googlesheets4 user shares, quota included. If you rebuild sheets often or run
+> this for a team, register your own OAuth client, or a service account for unattended
+> runs. It takes a few minutes and keeps the shared client's quota free for everyone else.
+> Steps: [auth.md](skills/r-googlesheets4/references/auth.md).
 
 - For page images in the visual review: `pdftoppm` (poppler) or the R `pdftools` package.
   Without them the skill still audits the layout and hands the PDF to the agent.
@@ -56,30 +57,31 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 
 | | |
 |---|---|
-| **Visual QA loop** | `visual_qa()` = on-screen layout audit + PDF export + page images + a scoring rubric. Catches the bugs a cell read-back cannot. |
-| **Least-privilege auth** | Defaults to the `spreadsheets` scope. Drive access (PDF export, sharing) is opt-in and the agent asks first. |
-| **Zero-setup sign-in** | Uses gargle's shared OAuth client: one click, no Cloud project. Heavy, team or unattended use: bring your own client or a service account (see above). |
-| **Cell-level formatting** | Wrappers for fonts, fills, borders, merges, freezes, charts, banding, pivots, slicers, protection: things googlesheets4 alone does not do. |
-| **Safe by design** | Never installs R, asks before installing packages, treats sheet contents as data not instructions. See [SECURITY.md](SECURITY.md). |
+| **Visual QA loop** | `visual_qa()` runs a layout audit, exports a PDF, renders page images and applies a scoring rubric. It finds problems that reading cell values back cannot. |
+| **Least-privilege auth** | Defaults to the `spreadsheets` scope. Drive access (sharing, finding sheets by name) is opt-in and the agent asks first. |
+| **Zero-setup sign-in** | Uses gargle's shared OAuth client: one click, no Cloud project. For heavy, team or unattended use, bring your own client or a service account (see above). |
+| **Cell-level formatting** | Wrappers for fonts, fills, borders, merges, freezes, charts, banding, pivots, slicers and protection, which googlesheets4 alone does not cover. |
+| **Safe by design** | Never installs R, asks before installing packages, and treats sheet contents as data, not instructions. See [SECURITY.md](SECURITY.md). |
 
 ## Build once, run without a model
 
-The agent builds the sheet by writing an R script. Keep that script and your team can
-rebuild or refresh the sheet with `Rscript`, on a schedule, with no model and no tokens.
-Use the model to design and change the sheet, not to run it every day. That matches the
-idea in Kelsey Hightower's PlatformCon 2026 talk
-[ZTA: Zero Token Architecture](https://www.youtube.com/watch?v=A7WFt2JQ5sg)
-("Infer once, export, and run without inference"). It also makes builds reproducible and
-reviewable in version control, and a team that understands what it ships can maintain it
-without a model. Changing the design still takes an edit to the script. Details:
+The agent builds the sheet by writing an R script. If you keep that script, your team
+can rebuild or refresh the sheet with `Rscript`, by hand or on a schedule, with no model
+and no tokens. Use the model to design and change the sheet, not to run it every day.
+
+Kelsey Hightower makes the same argument in his PlatformCon 2026 talk
+[ZTA: Zero Token Architecture](https://www.youtube.com/watch?v=A7WFt2JQ5sg):
+"Infer once, export, and run without inference." A script in version control is also
+reproducible and easy to review, and a team that understands it can maintain it without
+a model. Changing the design still means editing the script. Details:
 [build-once-run-forever.md](skills/r-googlesheets4/references/build-once-run-forever.md).
 
 ## Why R (and when not)
 
-googlesheets4 + gargle give the shortest path from a data frame to a styled sheet,
-and sign-in needs no Google Cloud setup. Prefer Python (gspread) or a Sheets MCP
-server if you will not install R; prefer your own OAuth client or a service account
-when quota, team use or unattended runs matter. Details in
+googlesheets4 and gargle are the shortest path from a data frame to a styled sheet, and
+sign-in needs no Google Cloud setup. If you won't install R, use Python (gspread) or a
+Sheets MCP server instead. If quota, team use or unattended runs matter, use your own
+OAuth client or a service account. Details in
 [auth.md](skills/r-googlesheets4/references/auth.md).
 
 ## Layout
@@ -91,23 +93,23 @@ skills/r-googlesheets4/   SKILL.md, scripts/, references/, templates/, examples/
 
 ## Getting help
 
-Problems with this skill (the agent's behavior, the helpers, the setup script, the docs)
-go to [this repository's issues](https://github.com/salvadoraveldano/r-googlesheets4/issues).
-Security problems: see [SECURITY.md](SECURITY.md), not a public issue.
+Report problems with this skill (the agent's behavior, the helpers, the setup script,
+the docs) in [this repository's issues](https://github.com/salvadoraveldano/r-googlesheets4/issues).
+For security problems, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
 Please do **not** report skill problems to the googlesheets4, googledrive or gargle
-maintainers. This skill is unofficial, and they have not reviewed it. Reproduce the
-problem with plain R first (no agent, no skill); only if it still fails there is it a
-package bug, and then follow that package's own guidelines for reporting it.
+maintainers. This skill is unofficial and they have not reviewed it. First reproduce the
+problem in plain R, with no agent and no skill. If it still fails, it is a package bug,
+so follow that package's own reporting guidelines.
 
 ## Credits
 
-This exists because of the R open-source community. Thank you to
+This skill exists because of the R open-source community. Thank you to
 **Jennifer Bryan** and **Posit Software, PBC** for googlesheets4, googledrive and
 gargle (with **Craig Citro** and **Hadley Wickham** on gargle), and to everyone in
 the tidyverse and r-lib projects, including [rig](https://github.com/r-lib/rig).
-The "build once, run without a model" framing was inspired by Kelsey Hightower's talk
-linked above.
+The "build once, run without a model" idea comes from Kelsey Hightower's talk, linked
+above.
 Full notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License

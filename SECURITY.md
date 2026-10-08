@@ -9,20 +9,20 @@ acknowledgement within a few days.
 ## Threat model and design choices
 
 A skill is instructions plus scripts that an AI agent runs on your machine. Treat
-it like installed software and read it before you install it. This one is built so
-that you can:
+it like installed software: read it before you install it. This one is built to
+be easy to check:
 
 - **Least privilege.** The default access level requests only the Google
-  `spreadsheets` scope. Broader access (`drive.readonly` for finding sheets by name, `drive`
-  for sharing and moving files) is opt-in via `GS_SCOPE_LEVEL`, and the agent is
-  told to ask you first.
+  `spreadsheets` scope. Broader access (`drive.readonly` for finding sheets by name,
+  `drive` for sharing and moving files) is opt-in through `GS_SCOPE_LEVEL`, and the
+  agent must ask you first.
 - **No silent installs.** The skill never installs R, runs a package manager, or
-  pipes anything from the network into a shell. Missing pieces produce
-  instructions, and R packages are installed only after you say yes.
+  pipes anything from the network into a shell. When something is missing, it prints
+  instructions and installs R packages only after you say yes.
 - **No secrets in the repo.** OAuth tokens live in gargle's per-user cache
   (directory mode 0700). The skill never prints tokens or key files.
-- **Untrusted cell data.** Sheet contents can be written by anyone, so the skill
-  tells the agent to treat them as data and never follow instructions found there.
+- **Untrusted cell data.** Anyone can write into a sheet, so the skill tells the
+  agent to treat cell contents as data and never to follow instructions found there.
 - **Narrow tool pre-approval.** `allowed-tools` pre-approves only reading files and
   the read-only `gs_setup.sh status` command.
 
@@ -39,11 +39,11 @@ Revoke access any time at https://myaccount.google.com/permissions.
 
 ## Service accounts
 
-`GS_SA_JSON` points at a service-account key. Keep that file outside the project,
+`GS_SA_JSON` points to a service-account key. Keep that file outside the project,
 never commit it (`.gitignore` blocks common names), and share only the sheets it
 needs with the service account's email.
 
 ## Supply chain
 
-Only CRAN packages from the tidyverse/r-lib ecosystem are used. Pin versions in
-your own environment (for example with renv) if you need reproducibility.
+The skill uses only CRAN packages from the tidyverse/r-lib ecosystem. Pin versions
+in your own environment (for example with renv) if you need reproducibility.
