@@ -1,6 +1,6 @@
 # Changelog
 
-## 3.1.0 (unreleased)
+## 3.1.0 - 2026-10-08
 
 First public release. Versions 3.0.0 and 3.0.1 were private; their notes are at the end.
 
