@@ -8,6 +8,14 @@ Three sample Google Sheets, each built by one R script from synthetic data. Ever
 | Ops Command Center | `ops-command-center.R` | 5 | A project dashboard. KPI cards, a status doughnut, a workstream bar chart, planned-versus-actual burn-down, a top-5 "needs attention" list, 45 tasks with dropdowns and sparkline progress bars, a weekly Gantt drawn by conditional formatting, and an owner-by-status workload heatmap. |
 | Personal Finance Tracker | `personal-finance.R` | 6 | A month picker drives the dashboard: KPI cards, a budget-health strip, four charts and a top-5 list. Budget, Transactions (about 370 rows), Net Worth and Trends tabs sit behind it, with SUMIFS actuals, red and green variance rules, a native pivot-table heatmap and live self-checks. |
 
+## Live samples
+
+View-only links, the same sheets the screenshots come from. The dropdowns and pickers only work in your own copy (File > Make a copy, or the copy links).
+
+- SaaS Financial Model: [open](https://docs.google.com/spreadsheets/d/1N5A_YHreexPraNFuU7XaKrnTCCQXvsmYY7HZHUpMNlQ/edit?usp=sharing) · [copy](https://docs.google.com/spreadsheets/d/1N5A_YHreexPraNFuU7XaKrnTCCQXvsmYY7HZHUpMNlQ/copy)
+- Ops Command Center: [open](https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/edit?usp=sharing) · [copy](https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/copy)
+- Personal Finance Tracker: [open](https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/edit?usp=sharing) · [copy](https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/copy)
+
 ## Build your own copy
 
 You need the skill's setup done once: R, the CRAN packages and a saved Google login (`bash skills/r-googlesheets4/scripts/gs_setup.sh status`). Run from the repository root:

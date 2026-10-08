@@ -9,7 +9,8 @@ and no hidden installs.
 2. Never add anything that installs software or requests broader Google access
    without an explicit user prompt.
 3. No real emails, sheet IDs, company names or keys in examples. Use `you@example.com`
-   and `gs4_example()`.
+   and `gs4_example()`. The one exception is the links to the three published sample
+   sheets, which are in the docs; the scripts keep the `<id>` placeholder.
 4. Run the checks: `bash scripts/check.sh` (secret and branding scan, R syntax, version
    sync, and a gate that fails when a helper in `scripts/` has no row in
    `references/helpers.md`), `Rscript scripts/offline-test.R` (request shapes and guards,

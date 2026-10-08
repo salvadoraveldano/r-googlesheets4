@@ -70,17 +70,23 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 
 ## Showcases
 
-Three sample sheets, each built by one script in [examples/showcases](examples/showcases/README.md) from synthetic data. Run a script and you get your own copy.
+Three sample sheets, each built by one script in [examples/showcases](examples/showcases/README.md) from synthetic data. Run a script and you get your own copy. Visitors with the link can look but not edit, and the dropdowns and pickers do not work for view-only visitors, so use **Make your own copy** to try them.
 
 **SaaS financial model.** Eight tabs and a 24-month forecast. One scenario dropdown drives every tab, and 17 integrity checks feed a status badge.
+
+[Open the sample sheet](https://docs.google.com/spreadsheets/d/1N5A_YHreexPraNFuU7XaKrnTCCQXvsmYY7HZHUpMNlQ/edit?usp=sharing) (view-only) · [Make your own copy](https://docs.google.com/spreadsheets/d/1N5A_YHreexPraNFuU7XaKrnTCCQXvsmYY7HZHUpMNlQ/copy)
 
 ![SaaS financial model: KPI cards, MRR waterfall and ARR by scenario](docs/img/saas-model.png)
 
 **Ops command center.** KPI cards, status and workstream charts, a Gantt drawn by conditional formatting, and a workload heatmap.
 
+[Open the sample sheet](https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/edit?usp=sharing) (view-only) · [Make your own copy](https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/copy)
+
 ![Ops command center: KPI cards, status doughnut and workstream bars](docs/img/ops-command-center.png)
 
 **Personal finance tracker.** A month picker drives the dashboard, a budget-health strip and four charts.
+
+[Open the sample sheet](https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/edit?usp=sharing) (view-only) · [Make your own copy](https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/copy)
 
 ![Personal finance tracker: KPI cards, budget health and spending charts](docs/img/personal-finance.png)
 
