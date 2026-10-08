@@ -1,0 +1,16 @@
+name: Feature request
+description: A helper, a doc or a behavior you would like
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What are you trying to do?
+      description: Describe the sheet you want to build or the step that is hard today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: A helper signature, a doc section or a changed default. Skip this if you are not sure.

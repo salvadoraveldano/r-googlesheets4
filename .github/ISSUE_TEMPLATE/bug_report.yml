@@ -1,0 +1,66 @@
+name: Bug report
+description: The skill, a helper, the setup script or the docs did something wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Remove spreadsheet ids, email addresses and file paths from
+        anything you paste.** For a security problem, use the private route in
+        [SECURITY.md](https://github.com/salvadoraveldano/r-googlesheets4/blob/main/SECURITY.md)
+        instead of this form.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Exact error text helps most.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The prompt you gave the agent, or the R call you ran.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Skill version
+      description: "`metadata.version` in SKILL.md"
+      placeholder: "3.1.0"
+    validations:
+      required: true
+  - type: input
+    id: agent
+    attributes:
+      label: Agent and model
+      placeholder: "Claude Code, Sonnet 5.5"
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "macOS 15, Ubuntu 24.04, Windows 11 (Git Bash)"
+  - type: input
+    id: r
+    attributes:
+      label: R and package versions
+      description: "Output of `Rscript -e 'R.version.string; packageVersion(\"googlesheets4\")'`"
+  - type: input
+    id: level
+    attributes:
+      label: Access level (GS_SCOPE_LEVEL)
+      placeholder: "sheets (default)"
+  - type: textarea
+    id: setup
+    attributes:
+      label: The `state=` and `reason=` values from the last line of `bash scripts/gs_setup.sh status`
+      description: Copy only those two values. Leave out `email=` and `cached=`, which hold your Google accounts.
+      placeholder: "state=READY reason=-"
+      render: text
+  - type: checkboxes
+    id: plain-r
+    attributes:
+      label: Package bugs
+      options:
+        - label: If the problem is in googlesheets4, googledrive or gargle themselves, I reproduced it in plain R without the skill (otherwise I understand it belongs to this repository, not to those maintainers).

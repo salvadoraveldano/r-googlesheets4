@@ -2,6 +2,8 @@
 
 ## 3.1.0 (unreleased)
 
+First public release. Versions 3.0.0 and 3.0.1 were private; their notes are at the end.
+
 - New reference `build-once-run-forever.md` and a README section: use the model to build,
   keep the script, rerun it with `Rscript` and no model. Inspired by Kelsey Hightower's
   PlatformCon 2026 talk "ZTA: Zero Token Architecture" (credited, paraphrased).
@@ -161,8 +163,9 @@
 - `helpers.md` now has a row for every helper, including `gs_require_level()` and
   `write_section_header_brand()`, which had none.
 - `scripts/check.sh`: new doc-drift gate. It fails when a function in `scripts/*.R` has no
-  row in `references/helpers.md`, parses every R file under `skills/` and `examples/`, and
-  checks that SKILL.md links to reference files that exist.
+  row in `references/helpers.md`, parses every R file under `skills/`, `examples/` and
+  `scripts/`, checks that SKILL.md links to reference files that exist, and checks that
+  `plugin.json`, SKILL.md and this file name the same version.
 - `scripts/selftest.R`: live self-test of the helpers on one scratch sheet at the default
   access level, with a PASS/FAIL table. A repo dev tool, not part of the skill folder.
   Checks cover the four new helpers (read back from Google) and the locale guard, which
@@ -172,9 +175,28 @@
   the locale guard. `helpers.md` also notes the Sheets read quota (about 60 read requests per
   minute per user, one call per range in `read_values()`, so large loops can hit HTTP 429).
 - Four new evals (13 to 17): `reuse-wrong-file`, `flip-and-restore`, `cross-tab-chart`,
-  `share-exposure`.
+  `share-exposure`. All 17 were graded as dry runs on Haiku; the four new ones also on
+  Sonnet and Opus.
+- `scripts/offline-test.R`: checks that need no Google account (request shapes, formulas,
+  value escaping, and the guards that must stop before any request). It runs in CI on every
+  push and pins each shape an earlier live test showed Google rejects or misreads.
+- CI: read-only token, full-history checkout for the secret scan, third-party actions pinned
+  to commit SHAs, Dependabot for actions, and a job that runs the offline tests.
+- `gs_setup.sh` also looks for Rscript under `Program Files\R\R-*\bin` (newest version
+  first), because the CRAN installer for Windows does not put R on PATH. Untested on a real
+  Windows machine; `scripts/check.sh` tests the lookup on a fake tree.
+- Issue forms, a pull request template, a code of conduct and a Dependabot config.
+- Showcase `saas-model.R`: Unit Economics CAC falls back to the CAC input when a year has no
+  new customers, so "Model ties" stays OK when month-1 new customers is set to 0.
+- SKILL.md: the sharing note gives the exact `GS_SCOPE_LEVEL=drive` sign-in command.
+- `visual_qa()` and `audit_layout()` combine their findings with base `rbind()`. They used
+  `dplyr::bind_rows()`, and dplyr is not one of the packages the setup script installs, so a
+  fresh R install stopped at the first run that had findings.
+- Credits name Lucy D'Agostino McGowan for googledrive in the README, SKILL.md and the site.
 
-## 3.0.1 (unreleased)
+## Before the public release
+
+### 3.0.1 (private)
 
 - **Fix:** `audit_layout()` now reports a clipped merged title as "merged cells A:D are
   N px wide" and suggests widening the merged columns in total (it used to suggest
@@ -188,9 +210,9 @@
 - Evals: forbidden-action expectations added, and six new cases (blanket "just install",
   background sign-in, blocked port, injection in a tab name, missing rasterizer, cron).
 
-## 3.0.0 (unreleased)
+### 3.0.0 (private)
 
-First public release.
+First version prepared for release.
 
 - Employer-specific branding removed; `brand.R` is a generic, editable theme.
 - **Least-privilege auth:** default access level is `spreadsheets`; `readonly`,

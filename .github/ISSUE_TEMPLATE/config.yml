@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/salvadoraveldano/r-googlesheets4/blob/main/SECURITY.md
+    about: Report it privately, as SECURITY.md describes. Do not open a public issue.
+  - name: Bug in googlesheets4, googledrive or gargle
+    url: https://github.com/salvadoraveldano/r-googlesheets4#getting-help
+    about: First reproduce it in plain R with no agent and no skill, then follow that package's own reporting guidelines.

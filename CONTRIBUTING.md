@@ -10,9 +10,12 @@ and no hidden installs.
    without an explicit user prompt.
 3. No real emails, sheet IDs, company names or keys in examples. Use `you@example.com`
    and `gs4_example()`.
-4. Run the checks: `claude plugin validate --strict .` and `bash scripts/check.sh`
-   (secret and branding scan, R syntax, and a gate that fails when a helper in
-   `scripts/` has no row in `references/helpers.md`).
+4. Run the checks: `bash scripts/check.sh` (secret and branding scan, R syntax, version
+   sync, and a gate that fails when a helper in `scripts/` has no row in
+   `references/helpers.md`), `Rscript scripts/offline-test.R` (request shapes and guards,
+   no Google account needed; it needs the CRAN packages googlesheets4, googledrive, httr
+   and glue) and `claude plugin validate --strict .`. Validate a clean checkout: a local,
+   untracked `claude.md` at the repo root makes `--strict` fail.
 5. If you touched a helper, run the live self-test: `Rscript scripts/selftest.R`. It
    needs a saved login (see [auth.md](skills/r-googlesheets4/references/auth.md)),
    uses one scratch sheet at the default access level, and prints a PASS/FAIL table.
@@ -20,7 +23,10 @@ and no hidden installs.
 6. For a behavior change, add or update an eval in `skills/r-googlesheets4/evals/`.
    Run evals as a dry run: give the model the skill and a scripted command output, and
    ask for an action log (the commands it would run, plus the final message). Don't ask
-   for a full reasoning transcript, which can trip model safeguards.
+   for a full reasoning transcript, which can trip model safeguards. Last graded
+   2026-10-08: all 17 evals on Haiku, and evals 14 to 17 on Sonnet and Opus. One
+   expectation (`share-exposure`: give the exact `GS_SCOPE_LEVEL=drive` sign-in command) failed
+   on Sonnet and Opus, so SKILL.md now states the command, and both passed on a re-run.
 
 ## Style
 

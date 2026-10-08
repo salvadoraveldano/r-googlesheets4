@@ -2,6 +2,10 @@
 
 **Build, format and visually QA Google Sheets from R, driven by your AI coding agent.**
 
+[![validate](https://github.com/salvadoraveldano/r-googlesheets4/actions/workflows/validate.yml/badge.svg)](https://github.com/salvadoraveldano/r-googlesheets4/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+· [Site](https://salvadoraveldano.github.io/r-googlesheets4/) · [Showcases](examples/showcases/README.md) · [Changelog](CHANGELOG.md)
+
 Ask your coding agent for a styled multi-tab P&L, a KPI dashboard or a budget model.
 It writes R with [googlesheets4](https://googlesheets4.tidyverse.org) and formats the
 sheet through the Sheets API. Then it exports the sheet to PDF and looks at the pages for
@@ -32,6 +36,7 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 ## What you need
 
 - **R**. The skill never installs it for you. No R? See [no-r-alternatives](skills/r-googlesheets4/references/no-r-alternatives.md).
+- **A Unix shell.** Built and tested on macOS. CI runs the syntax and offline checks on Linux. Windows through Git Bash or WSL is untested: the setup script looks for R under `Program Files`, but nobody has run it there yet.
 - The CRAN packages googlesheets4, googledrive and gargle. The skill asks before installing them.
 - A Google account. The first sign-in is one click and needs no Google Cloud project.
 
@@ -63,6 +68,22 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 | **Cell-level formatting** | Wrappers for fonts, fills, borders, merges, freezes, charts, banding, pivots, slicers and protection, which googlesheets4 alone does not cover. |
 | **Safe by design** | Never installs R, asks before installing packages, and treats sheet contents as data, not instructions. See [SECURITY.md](SECURITY.md). |
 
+## Showcases
+
+Three sample sheets, each built by one script in [examples/showcases](examples/showcases/README.md) from synthetic data. Run a script and you get your own copy.
+
+**SaaS financial model.** Eight tabs and a 24-month forecast. One scenario dropdown drives every tab, and 17 integrity checks feed a status badge.
+
+![SaaS financial model: KPI cards, MRR waterfall and ARR by scenario](docs/img/saas-model.png)
+
+**Ops command center.** KPI cards, status and workstream charts, a Gantt drawn by conditional formatting, and a workload heatmap.
+
+![Ops command center: KPI cards, status doughnut and workstream bars](docs/img/ops-command-center.png)
+
+**Personal finance tracker.** A month picker drives the dashboard, a budget-health strip and four charts.
+
+![Personal finance tracker: KPI cards, budget health and spending charts](docs/img/personal-finance.png)
+
 ## Build once, run without a model
 
 The agent builds the sheet by writing an R script. If you keep that script, your team
@@ -88,6 +109,9 @@ OAuth client or a service account. Details in
 
 ```
 skills/r-googlesheets4/   SKILL.md, scripts/, references/, templates/, examples/, evals/
+examples/showcases/       three sample sheets and the scripts that build them
+scripts/                  repo checks: check.sh, offline-test.R, selftest.R (not part of the skill)
+docs/                     the one-page site and its screenshots
 .claude-plugin/           plugin and marketplace manifests
 ```
 
@@ -106,7 +130,8 @@ so follow that package's own reporting guidelines.
 
 This skill exists because of the R open-source community. Thank you to
 **Jennifer Bryan** and **Posit Software, PBC** for googlesheets4, googledrive and
-gargle (with **Craig Citro** and **Hadley Wickham** on gargle), and to everyone in
+gargle (with **Lucy D'Agostino McGowan** on googledrive, and **Craig Citro** and
+**Hadley Wickham** on gargle), and to everyone in
 the tidyverse and r-lib projects, including [rig](https://github.com/r-lib/rig).
 The "build once, run without a model" idea comes from Kelsey Hightower's talk, linked
 above.

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>r-googlesheets4</title>
+<meta name="description" content="An agent skill that builds, formats and visually checks Google Sheets from R, using googlesheets4 and the Sheets API. Unofficial, MIT licensed.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="r-googlesheets4">
+<meta property="og:description" content="Build, format and visually QA Google Sheets from R, driven by your AI coding agent.">
+<meta property="og:image" content="https://salvadoraveldano.github.io/r-googlesheets4/img/social-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1b2230; --muted: #566074; --line: #dde2ec;
+    --brand: #2457c5; --brand-fg: #ffffff; --card: #f4f6fb; --code: #eef1f8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1420; --fg: #e8ecf5; --muted: #9aa5ba; --line: #283248;
+      --brand: #7ea3f2; --brand-fg: #0f1420; --card: #171e2e; --code: #1d2638;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1420; --fg: #e8ecf5; --muted: #9aa5ba; --line: #283248;
+    --brand: #7ea3f2; --brand-fg: #0f1420; --card: #171e2e; --code: #1d2638;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main, header, footer { max-width: 60rem; margin: 0 auto; padding: 0 1rem; }
+  header { padding-top: 3.5rem; padding-bottom: 1.5rem; }
+  h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.15; margin: 0 0 .5rem; }
+  h2 { font-size: 1.5rem; margin: 3rem 0 .75rem; }
+  h3 { font-size: 1.1rem; margin: 1.5rem 0 .25rem; }
+  p { margin: .5rem 0 1rem; }
+  a { color: var(--brand); }
+  .lead { font-size: 1.2rem; color: var(--muted); max-width: 42rem; }
+  .note { font-size: .9rem; color: var(--muted); }
+  pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre {
+    background: var(--code); border: 1px solid var(--line); border-radius: 8px;
+    padding: .85rem 1rem; overflow-x: auto; font-size: .92rem; line-height: 1.5;
+  }
+  :not(pre) > code { background: var(--code); padding: .1em .35em; border-radius: 4px; font-size: .92em; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.1rem; }
+  .card h3 { margin-top: 0; }
+  .card p { margin-bottom: 0; }
+  figure { margin: 1.5rem 0; }
+  figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 10px; }
+  figcaption { margin-top: .5rem; font-size: .95rem; color: var(--muted); }
+  blockquote { margin: 1rem 0; padding: 0; font-size: 1.15rem; font-style: italic; color: var(--fg); }
+  .links a { margin-right: 1rem; font-weight: 600; }
+  footer { padding-top: 2rem; padding-bottom: 3rem; border-top: 1px solid var(--line); margin-top: 3rem; }
+</style>
+</head>
+<body>
+<header>
+  <h1>r-googlesheets4</h1>
+  <p class="lead">Build, format and visually QA Google Sheets from R, driven by your AI coding agent.</p>
+  <p class="links">
+    <a href="https://github.com/salvadoraveldano/r-googlesheets4">GitHub</a>
+    <a href="https://github.com/salvadoraveldano/r-googlesheets4/blob/main/examples/showcases/README.md">Showcases</a>
+    <a href="https://github.com/salvadoraveldano/r-googlesheets4/blob/main/CHANGELOG.md">Changelog</a>
+  </p>
+  <p class="note">An unofficial community skill. Posit, the tidyverse team and Google have not endorsed it and are not affiliated with it.</p>
+</header>
+
+<main>
+  <section>
+    <h2>What it does</h2>
+    <p>Ask your coding agent for a styled multi-tab P&amp;L, a KPI dashboard or a budget model. The skill writes R with <a href="https://googlesheets4.tidyverse.org">googlesheets4</a> and formats the sheet through the Sheets API. Then it exports the sheet to PDF and inspects the pages for truncated text, <code>###</code> numbers, too-narrow columns and misaligned cells. It fixes what it finds and checks again.</p>
+    <div class="grid">
+      <div class="card"><h3>Visual QA loop</h3><p>A layout audit, a PDF export, page images and a scoring rubric find problems that reading cell values back cannot.</p></div>
+      <div class="card"><h3>Least-privilege sign-in</h3><p>The default scope is <code>spreadsheets</code>. Drive access for sharing is opt-in, and the agent asks first.</p></div>
+      <div class="card"><h3>Cell-level formatting</h3><p>Fonts, fills, borders, merges, freezes, charts, banding, pivots, slicers and protection, which googlesheets4 alone does not cover.</p></div>
+      <div class="card"><h3>No model to rerun</h3><p>The agent leaves you an R script. Rebuild or refresh the sheet with <code>Rscript</code>, by hand or on a schedule.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Install</h2>
+    <p>Claude Code:</p>
+<pre>/plugin marketplace add salvadoraveldano/r-googlesheets4
+/plugin install r-googlesheets4@r-googlesheets4-marketplace</pre>
+    <p>Other agents, through the <a href="https://github.com/vercel-labs/skills">skills CLI</a>:</p>
+<pre>npx skills add salvadoraveldano/r-googlesheets4</pre>
+    <p>You need R, which the skill never installs for you, and the CRAN packages googlesheets4, googledrive and gargle, which it installs only after you say yes. The first sign-in is one click and needs no Google Cloud project. Built and tested on macOS; Windows is untested.</p>
+  </section>
+
+  <section>
+    <h2>Three sample sheets</h2>
+    <p>Each one is built by a single script from synthetic data. Rerun the script to get your own copy.</p>
+    <figure>
+      <img src="img/saas-model.png" width="1100" height="585" alt="SaaS financial model: KPI cards, an MRR waterfall chart and ARR by scenario" loading="lazy">
+      <figcaption><strong>SaaS financial model.</strong> Eight tabs and a 24-month forecast. One scenario dropdown drives every tab, and 17 integrity checks feed a status badge.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/ops-command-center.png" width="1100" height="547" alt="Ops command center: KPI cards, a status doughnut and workstream bar chart" loading="lazy">
+      <figcaption><strong>Ops command center.</strong> KPI cards, status and workstream charts, a Gantt drawn by conditional formatting and a workload heatmap.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/personal-finance.png" width="1100" height="525" alt="Personal finance tracker: KPI cards, a budget health strip and spending charts" loading="lazy">
+      <figcaption><strong>Personal finance tracker.</strong> A month picker drives the dashboard, a budget-health strip and four charts.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Build once, run without a model</h2>
+    <p>Use the model to design and change the sheet, not to run it every day. Keep the script in version control and run it with <code>Rscript</code>; a team that understands the script can maintain the sheet without a model. Changing the design still means editing the script.</p>
+    <p>Kelsey Hightower makes the same argument in his PlatformCon 2026 talk <a href="https://www.youtube.com/watch?v=A7WFt2JQ5sg">ZTA: Zero Token Architecture</a>:</p>
+    <blockquote>"Infer once, export, and run without inference."</blockquote>
+  </section>
+
+  <section>
+    <h2>Safe by design</h2>
+    <p>The skill never installs R, asks before installing packages, and treats text read from a sheet as data, not instructions. It refuses to rebuild into a file whose title and tabs do not match the script. Sharing exposes more than cells, so the agent names those risks before it shares anything. Details are in the <a href="https://github.com/salvadoraveldano/r-googlesheets4/blob/main/SECURITY.md">security policy</a>.</p>
+  </section>
+
+  <section>
+    <h2>Credits</h2>
+    <p>This skill exists because of the R open-source community. Thank you to <strong>Jennifer Bryan</strong> and <strong>Posit Software, PBC</strong> for googlesheets4, googledrive and gargle (with <strong>Lucy D&rsquo;Agostino McGowan</strong> on googledrive, and <strong>Craig Citro</strong> and <strong>Hadley Wickham</strong> on gargle), and to everyone in the tidyverse and r-lib projects, including <a href="https://github.com/r-lib/rig">rig</a>.</p>
+  </section>
+</main>
+
+<footer>
+  <p class="note">MIT licensed. <a href="https://github.com/salvadoraveldano/r-googlesheets4">Source and issues on GitHub</a>. Please report skill problems there, not to the googlesheets4, googledrive or gargle maintainers.</p>
+</footer>
+</body>
+</html>
