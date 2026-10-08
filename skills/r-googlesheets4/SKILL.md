@@ -136,7 +136,8 @@ qa <- visual_qa(ss)        # qa$findings (tibble), qa$pages (PNG paths) -> Read(
 Sharing and moving files (`drive_share()`, `drive_mv()`) need the `drive` access
 level; ask the user first, then use `gs_require_level()` in the script. Put the
 exposure warnings in that same question, before the user agrees (list in
-[drive-integration.md](references/drive-integration.md#what-a-shared-sheet-exposes)).
+[drive-integration.md](references/drive-integration.md#what-a-shared-sheet-exposes)),
+and give the exact sign-in command: `GS_SCOPE_LEVEL=drive bash scripts/gs_setup.sh auth <email>`.
 
 ## Theming
 
@@ -248,7 +249,7 @@ add-on, not affiliated with or endorsed by Posit, the tidyverse team or Google.
 Huge thanks to **Jennifer Bryan** and **Posit Software, PBC** for
 [googlesheets4](https://googlesheets4.tidyverse.org),
 [googledrive](https://googledrive.tidyverse.org) and
-[gargle](https://gargle.r-lib.org) (with **Craig Citro** and **Hadley Wickham** for gargle),
+[gargle](https://gargle.r-lib.org) (with **Lucy D'Agostino McGowan** for googledrive, and **Craig Citro** and **Hadley Wickham** for gargle),
 and to the [tidyverse](https://www.tidyverse.org) and r-lib contributors, including
 [rig](https://github.com/r-lib/rig). See `THIRD_PARTY_NOTICES.md` in the repository.
 The build-once, run-without-a-model idea was inspired by Kelsey Hightower's

@@ -167,7 +167,7 @@ audit_layout <- function(ss, sheet_name, max_wide_px = 400L, min_narrow_px = 40L
                    "set halign = \"RIGHT\" on every numeric cell in the column"))
   }
   if (!length(out)) return(.finding(sheet_name, NA_character_, "minor", "", "")[0, ])
-  dplyr::bind_rows(out)
+  do.call(rbind, out)   # base R: the findings are tibbles with the same columns
 }
 
 #' Rasterize a PDF to PNGs (one per page). Returns image paths, or NULL (with
@@ -210,7 +210,7 @@ visual_qa <- function(ss, tabs = NULL, out_dir = file.path(tempdir(), "visual_qa
     pages[[tab]] <- pdf_to_pngs(pdf)
     if (i < length(tabs)) Sys.sleep(pause_s)  # export endpoint 429s under bursts
   }
-  f <- dplyr::bind_rows(findings)
+  f <- do.call(rbind, unname(findings))
   message(sprintf("[visual_qa] %d finding(s): %d blocker, %d major, %d minor",
                   nrow(f), sum(f$severity == "blocker"), sum(f$severity == "major"), sum(f$severity == "minor")))
   list(findings = f, pdfs = pdfs, pages = pages)

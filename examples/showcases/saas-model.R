@@ -399,7 +399,7 @@ for (j in 1:7) write_cell(ss, ue, U$hdr, 1L + j, c("Metric", "Year 1", "Year 2",
 write_cell(ss, ue, U$s_acq, 2, "ACQUISITION"); write_cell(ss, ue, U$s_ltv, 2, "LIFETIME VALUE"); write_cell(ss, ue, U$s_ret, 2, "RETENTION AND GROWTH")
 UL <- list(
   new = c("New customers in the year", "Sum of new customers over the 12 months"),
-  cac = c("CAC ($, equals the input)", "S&M spend / new customers (the CAC input, by design)"),
+  cac = c("CAC ($, equals the input)", "S&M spend / new customers, or the CAC input when there are none"),
   arpa = c("ARPA, month end ($ / month)", "Closing MRR / closing customers"),
   gm = c("Gross margin %", "Gross profit / revenue, in the year-end month"),
   churn = c("Monthly churn rate", "Churn rate in the year-end month"),
@@ -426,7 +426,7 @@ for (y in 1:2) {
   q3 <- if (y == 1L) c(mcol(7L), mcol(9L)) else c(mcol(19L), mcol(21L))
   open_arr <- if (y == 1L) glue("Forecast!C{r$arr}") else glue("Forecast!{M12}{r$arr}")
   write_cell(ss, ue, U$new,    cc, glue("=Forecast!{Y}{r$c_new}"))
-  write_cell(ss, ue, U$cac,    cc, glue('=IF(Forecast!{Y}{r$c_new}=0,"",Forecast!{Y}{r$sm}/Forecast!{Y}{r$c_new})'))
+  write_cell(ss, ue, U$cac,    cc, glue('=IF(Forecast!{Y}{r$c_new}=0,cac_per_customer,Forecast!{Y}{r$sm}/Forecast!{Y}{r$c_new})'))   # no new customers: S&M is 0 too, so show the input, which is what the Forecast uses
   write_cell(ss, ue, U$arpa,   cc, glue("=Forecast!{e}{r$arpa}"))
   write_cell(ss, ue, U$gm,     cc, glue("=Forecast!{e}{r$gm_pct}"))
   write_cell(ss, ue, U$churn,  cc, glue("=Forecast!{e}{r$churn}"))

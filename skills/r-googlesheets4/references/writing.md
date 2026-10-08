@@ -70,7 +70,7 @@ appending only the delta on a key column:
 
 ```r
 existing <- read_sheet(ss, sheet = "Log")
-delta    <- dplyr::anti_join(new_rows, existing, by = "txn_id")
+delta    <- dplyr::anti_join(new_rows, existing, by = "txn_id")   # needs the dplyr package; the skill itself does not
 if (nrow(delta) > 0) sheet_append(ss, data = delta, sheet = "Log")
 ```
 

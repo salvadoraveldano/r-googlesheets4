@@ -23,7 +23,15 @@ RSCRIPT=""
 if command -v Rscript >/dev/null 2>&1; then
   RSCRIPT="$(command -v Rscript)"
 else
-  for c in /usr/local/bin/Rscript /opt/homebrew/bin/Rscript \
+  # Windows (Git Bash): the CRAN installer does not put R on PATH. Newest version wins.
+  # Untested on a real Windows machine; scripts/check.sh tests this lookup on a fake tree.
+  for base in "${PROGRAMFILES:-}" "/c/Program Files"; do
+    [ -n "$base" ] || continue
+    base="$(cygpath -u "$base" 2>/dev/null || printf '%s' "$base")"
+    c="$(ls -d "$base"/R/R-*/bin/Rscript.exe 2>/dev/null | sort -V | tail -n 1)"
+    if [ -n "$c" ] && [ -x "$c" ]; then RSCRIPT="$c"; break; fi
+  done
+  [ -n "$RSCRIPT" ] || for c in /usr/local/bin/Rscript /opt/homebrew/bin/Rscript \
            /Library/Frameworks/R.framework/Resources/bin/Rscript \
            /usr/bin/Rscript /usr/lib/R/bin/Rscript; do
     if [ -x "$c" ]; then RSCRIPT="$c"; break; fi

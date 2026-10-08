@@ -817,7 +817,7 @@ src <- audit_chart_sources(ss_id)                        # every tab, including 
 if (length(src)) bad("chart source audit: %s", paste(src, collapse = "; "))
 
 # 4. on-screen layout audit (truncation, ###, thin columns, contrast)
-lay <- dplyr::bind_rows(lapply(TABS, function(t) audit_layout(ss, t)))
+lay <- do.call(rbind, lapply(TABS, function(t) audit_layout(ss, t)))
 message(sprintf("[audit_layout] %d finding(s): %d blocker, %d major, %d minor", nrow(lay),
                 sum(lay$severity == "blocker"), sum(lay$severity == "major"), sum(lay$severity == "minor")))
 if (nrow(lay)) print(as.data.frame(lay[lay$severity != "minor", ]), row.names = FALSE)

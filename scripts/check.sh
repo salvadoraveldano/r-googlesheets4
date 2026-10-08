@@ -17,6 +17,28 @@ n=$(wc -l < skills/r-googlesheets4/SKILL.md)
 if [ "$n" -gt 500 ]; then echo "FAIL: SKILL.md has $n lines (max 500)"; fail=1; fi
 bash -n skills/r-googlesheets4/scripts/gs_setup.sh || fail=1
 
+# One version everywhere: plugin.json, SKILL.md metadata and the newest CHANGELOG heading.
+v_plugin=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' .claude-plugin/plugin.json | head -n 1)
+v_skill=$(sed -n 's/^  version: *"\([^"]*\)".*/\1/p' skills/r-googlesheets4/SKILL.md | head -n 1)
+v_log=$(sed -n 's/^## \([0-9][0-9.]*\).*/\1/p' CHANGELOG.md | head -n 1)
+if [ -z "$v_plugin" ] || [ "$v_plugin" != "$v_skill" ] || [ "$v_plugin" != "$v_log" ]; then
+  echo "FAIL: version mismatch (plugin.json='$v_plugin', SKILL.md='$v_skill', CHANGELOG='$v_log')"; fail=1; fi
+
+# gs_setup.sh finds a Windows R that is not on PATH: fake Program Files tree, newest version wins.
+if [ -n "$(PATH=/usr/bin:/bin command -v Rscript || true)" ]; then
+  echo "skip: Windows Rscript lookup test (an Rscript is in /usr/bin)"
+else
+  tmp="$(mktemp -d)"
+  for v in 4.3.1 4.4.2 4.10.0; do
+    mkdir -p "$tmp/R/R-$v/bin"
+    printf '#!/bin/sh\necho "FAKE_RSCRIPT %s"\n' "$v" > "$tmp/R/R-$v/bin/Rscript.exe"
+    chmod +x "$tmp/R/R-$v/bin/Rscript.exe"
+  done
+  out="$(PATH=/usr/bin:/bin PROGRAMFILES="$tmp" bash skills/r-googlesheets4/scripts/gs_setup.sh status 2>&1 || true)"
+  rm -rf "$tmp"
+  case "$out" in *"FAKE_RSCRIPT 4.10.0"*) ;; *) echo "FAIL: gs_setup.sh did not pick the newest Windows Rscript (got: $out)"; fail=1;; esac
+fi
+
 # Every references/*.md file that SKILL.md mentions must exist.
 for p in $(grep -oE 'references/[A-Za-z0-9_.-]+\.md' skills/r-googlesheets4/SKILL.md | sort -u || true); do
   [ -f "skills/r-googlesheets4/$p" ] || { echo "FAIL: SKILL.md mentions $p, which does not exist"; fail=1; }
