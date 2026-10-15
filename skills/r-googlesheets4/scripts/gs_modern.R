@@ -241,9 +241,12 @@ fmt_image_cell <- function(sheet_id, row, col, image_url,
                            size = c(200L, 200L)) {
   mode <- match.arg(mode)
   if (mode == "IN_CELL") {
+    if (!isTRUE(grepl("^https?://", image_url, ignore.case = TRUE)))
+      stop("fmt_image_cell(): image_url must be one http(s) URL", call. = FALSE)
+    url <- gsub('"', '""', image_url, fixed = TRUE)   # a " would end the string and start a new formula
     list(updateCells = list(
       rows = list(list(values = list(list(
-        userEnteredValue = list(formulaValue = sprintf('=IMAGE("%s")', image_url))
+        userEnteredValue = list(formulaValue = sprintf('=IMAGE("%s")', url))
       )))),
       start = list(sheetId = sheet_id,
                    rowIndex = row - 1L, columnIndex = col - 1L),

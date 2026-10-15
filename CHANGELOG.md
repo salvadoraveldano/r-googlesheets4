@@ -7,6 +7,9 @@
 - `allowed-tools` pre-approves one exact command, `bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" status`.
   The old wildcard rule also matched a planted `scripts/gs_setup.sh` in the working
   directory and a `bash -c '…'` prefix. Step 0 runs the script by the same absolute path.
+- `fmt_image_cell()` (IN_CELL): a `"` in `image_url` is doubled, so a crafted URL can no
+  longer close the string and add a formula such as `IMPORTXML`. A URL that is not
+  `http(s)://` now stops.
 
 ## 3.1.0 - 2026-10-08
 

@@ -53,6 +53,10 @@ ok("f_sparkline writes numbers bare and quotes text", identical(
 ok("f_sparkline iferror wraps the formula", identical(
   f_sparkline("B2:M2", list(color = "#2457C5"), iferror = TRUE), '=IFERROR(SPARKLINE(B2:M2, {"color","#2457C5"}),"")'))
 stops("f_sparkline needs named options", f_sparkline("A1", list(1)), "needs a name")
+ok("fmt_image_cell doubles a quote in the URL", identical(
+  fmt_image_cell(1, 1, 1, 'https://x.test/a"b')$updateCells$rows[[1]]$values[[1]]$userEnteredValue$formulaValue,
+  '=IMAGE("https://x.test/a""b")'))
+stops("fmt_image_cell needs an http(s) URL", fmt_image_cell(1, 1, 1, "javascript:x"), "http")
 
 # ── Coordinates and colours ---------------------------------------------------
 g <- grid_range(7, 2, 5, 3, 4)
