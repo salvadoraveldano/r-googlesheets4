@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+**Security**
+
+- `allowed-tools` pre-approves one exact command, `bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" status`.
+  The old wildcard rule also matched a planted `scripts/gs_setup.sh` in the working
+  directory and a `bash -c '…'` prefix. Step 0 runs the script by the same absolute path.
+
 ## 3.1.0 - 2026-10-08
 
 First public release. Versions 3.0.0 and 3.0.1 were private; their notes are at the end.

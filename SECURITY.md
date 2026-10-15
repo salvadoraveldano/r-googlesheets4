@@ -23,8 +23,10 @@ be easy to check:
   (directory mode 0700). The skill never prints tokens or key files.
 - **Untrusted cell data.** Anyone can write into a sheet, so the skill tells the
   agent to treat cell contents as data and never to follow instructions found there.
-- **Narrow tool pre-approval.** `allowed-tools` pre-approves only reading files and
-  the read-only `gs_setup.sh status` command.
+- **Narrow tool pre-approval.** `allowed-tools` pre-approves reading files and one
+  exact command: the skill's own `gs_setup.sh status`, by its absolute path, with no
+  wildcard. A script of the same name in your project does not match. Every other
+  shell command asks.
 - **Sharing exposes more than cells.** Anyone with a link sees the owner's name, and a
   posted link can be indexed. Protected ranges store the owner as an
   editor. View-only visitors cannot use dropdowns (File > Make a copy). The skill asks

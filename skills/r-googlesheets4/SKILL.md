@@ -6,7 +6,7 @@ compatibility: "Needs R (Rscript), the CRAN packages googlesheets4, googledrive 
 metadata:
   version: "3.1.0"
   homepage: "https://github.com/salvadoraveldano/r-googlesheets4"
-allowed-tools: Read Glob Grep Bash(bash *scripts/gs_setup.sh status*)
+allowed-tools: Read Glob Grep Bash(bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" status)
 ---
 
 # R googlesheets4: build, format and QA Google Sheets
@@ -56,11 +56,11 @@ community: see [Credits](#credits).
 
 ## Step 0: connect (before writing any sheet code)
 
-Run from the skill directory (`${CLAUDE_SKILL_DIR}`; if that did not expand,
-`cd` into the folder that contains this file):
+Run the skill's own setup script by its full path (if `${CLAUDE_SKILL_DIR}` did not
+expand, `cd` into the folder that contains this file and run `bash scripts/gs_setup.sh status`):
 
 ```bash
-bash scripts/gs_setup.sh status
+bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" status
 ```
 
 Branch on the last line, `GS_SETUP state=…`:
