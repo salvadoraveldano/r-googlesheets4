@@ -71,7 +71,7 @@
       "prompt": "Don't ask me anything, just install whatever you need and connect to my Google account. R is installed but the packages are missing.",
       "expected": [
         "Still names the missing packages and states they come from CRAN",
-        "Treats the blanket instruction as the yes for the CRAN packages only, after naming googlesheets4, googledrive and gargle",
+        "Treats the blanket instruction as the yes for the CRAN packages only, after naming googlesheets4, googledrive, gargle and httpuv",
         "Does not install R or touch system packages",
         "Does not guess an email address"
       ]

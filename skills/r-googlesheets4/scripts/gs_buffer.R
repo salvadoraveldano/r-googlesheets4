@@ -129,7 +129,7 @@ flush_writes <- function(ss, strict = FALSE) {
   req <- googlesheets4::request_generate(
     endpoint = "sheets.spreadsheets.values.batchUpdate",
     params = list(
-      spreadsheetId    = as.character(ss),
+      spreadsheetId    = as.character(googlesheets4::as_sheets_id(ss)),
       valueInputOption = "USER_ENTERED",
       data             = .wb$data
     )

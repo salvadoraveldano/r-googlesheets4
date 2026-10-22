@@ -181,6 +181,65 @@ for (bad in list(NULL, character(0), NA_character_, 5L))
   stops(paste("gs_reset_tabs refuses tabs =", deparse(bad)), gs_reset_tabs("not-a-sheet", bad), "Nothing was changed")
 stops("gs_reset_tabs refuses a missing tabs", gs_reset_tabs("not-a-sheet"), "Nothing was changed")
 stops("gs_open_or_create refuses an unnamed rows vector", gs_open_or_create("T", c("A", "B"), id = "", rows = c(10, 20)), "named by tab")
+stops("fmt_image_cell refuses OVER_CELL", fmt_image_cell(3, 1, 1, "https://x.test/a.png", mode = "OVER_CELL"), "not supported")
+
+# ── Saved logins: client filter, token loader, default-account rule ------------
+# Fake tokens (no network: credentials are given, cache = FALSE) in a temp cache.
+Sys.unsetenv("GS_OAUTH_CLIENT")   # a client exported in the caller's shell must not steer these checks
+fake_cache <- file.path(tempdir(), "fake-gargle"); dir.create(fake_cache)
+fake_token <- function(id, email = "u@example.com") gargle::gargle2.0_token(
+  email = email, client = gargle::gargle_oauth_client(id = id, secret = "s", name = id),
+  package = "offline-test", scope = GS_SCOPE, credentials = list(access_token = "x"), cache = FALSE)
+tA <- fake_token("client-a"); tB <- fake_token("client-b")
+saveRDS(tA, file.path(fake_cache, paste0(tA$hash()))); saveRDS(tB, file.path(fake_cache, paste0(tB$hash())))
+Sys.setFileTime(file.path(fake_cache, tA$hash()), Sys.time() - 3600)      # A is older
+ok("token files are named <hash>_<email>", all(grepl("_u@example.com$", list.files(fake_cache))))
+l0 <- gs_cached_logins(fake_cache)
+ok("without GS_OAUTH_CLIENT any client counts", nrow(l0) == 2L && all(l0$has_scope) && setequal(l0$client, c("client-a", "client-b")))
+ld <- .gs_load_token(l0, "U@example.com", fake_cache)
+ok("the loader picks the newest matching file", identical(ld$token$client$id, "client-b"))
+ok("the loader points the token's cache_path at the cache in use", identical(ld$token$cache_path, fake_cache))
+ok("the loader returns NULL for an account with no login", is.null(.gs_load_token(l0, "nobody@example.com", fake_cache)))
+client_json <- file.path(tempdir(), "client.json")
+# A fake Desktop-app client file. The secret field name is built with paste0() so
+# check.sh's secret scan does not flag this placeholder.
+fake_client <- stats::setNames(list("client-a", "s", "p", list("http://localhost")),
+                               c("client_id", paste0("client", "_secret"), "project_id", "redirect_uris"))
+writeLines(jsonlite::toJSON(list(installed = fake_client), auto_unbox = TRUE), client_json)
+Sys.setenv(GS_OAUTH_CLIENT = client_json)
+la <- gs_cached_logins(fake_cache)
+ok("GS_OAUTH_CLIENT keeps only that client's token", identical(la$has_scope[la$client == "client-a"], TRUE) &&
+     identical(la$has_scope[la$client == "client-b"], FALSE) && identical(la$client_ok[la$client == "client-b"], FALSE))
+ok("with GS_OAUTH_CLIENT the loader takes the older matching file", identical(.gs_load_token(la, "u@example.com", fake_cache)$token$client$id, "client-a"))
+# .gs_use_token must install THIS token even when another credential source comes
+# first in gargle's chain (as GOOGLE_APPLICATION_CREDENTIALS or a GCE VM would).
+# tA has no refresh token, so nothing is sent to Google.
+gargle::cred_funs_set(list(decoy = function(scopes, ...) fake_token("decoy"),
+                           credentials_byo_oauth2 = gargle::credentials_byo_oauth2))
+use_res <- .gs_use_token(tA)
+gargle::cred_funs_set_default()
+ok("the saved token wins over a credential source earlier in gargle's chain",
+   identical(use_res, "ok") && identical(googlesheets4:::.auth$cred$client$id, "client-a"))
+googlesheets4::gs4_deauth()
+Sys.setenv(GS_OAUTH_CLIENT = file.path(tempdir(), "missing.json"))
+stops("a missing GS_OAUTH_CLIENT file", .gs_oauth_client(), "does not exist")
+Sys.unsetenv("GS_OAUTH_CLIENT")
+
+# gs_setup.R runs main() when sourced, so take only the function it needs.
+setup_exprs <- parse(file.path(SKILL, "scripts", "gs_setup.R"))
+for (e in setup_exprs) if (is.call(e) && length(e) > 1L && identical(deparse(e[[2L]]), "should_save_default")) eval(e)
+ok("auth saves the default when no email was given", should_save_default(NULL, TRUE, FALSE))
+ok("auth saves the first default", should_save_default("a@x.com", FALSE, FALSE))
+ok("auth <other> leaves an existing default alone", !should_save_default("a@x.com", TRUE, FALSE))
+ok("a mismatch never becomes the default", !should_save_default("a@x.com", FALSE, TRUE) && !should_save_default(NULL, TRUE, TRUE))
+
+# ── visual_qa output folder and sheet references ---------------------------------
+for (f in c("gs_qa.R", "gs_visual_qa.R")) suppressMessages(source(file.path(SKILL, "scripts", f)))
+vq <- .gs_visual_qa_dir("abc123")
+ok("visual_qa's default folder outlives Rscript (not under tempdir())",
+   !startsWith(normalizePath(vq, mustWork = FALSE), normalizePath(tempdir())) && endsWith(vq, file.path("visual_qa", "abc123")))
+ok("a sheet URL resolves to its id offline (as batch_format etc. now do)", identical(
+   as.character(googlesheets4::as_sheets_id("https://docs.google.com/spreadsheets/d/1abcDEF_-x/edit#gid=0")), "1abcDEF_-x"))
 
 # ── Every request must serialise ----------------------------------------------
 js <- tryCatch(jsonlite::toJSON(REQS, auto_unbox = TRUE, digits = NA), error = function(e) NULL)

@@ -279,25 +279,14 @@ build script is re-run in place, delete the old ones by id first.
 
 ## Image embedding (`=IMAGE()`)
 
-Two modes:
-
 ```r
-# IN_CELL — uses =IMAGE() formula. Image scales inside the cell.
+# =IMAGE() formula: the image scales inside the cell and shows in exports.
 fmt_image_cell(sid, row = 5L, col = 3L,
-               image_url = "https://example.com/logo.png",
-               mode = "IN_CELL")
-
-# OVER_CELL — embedded object positioned over the anchor cell.
-fmt_image_cell(sid, row = 5L, col = 3L,
-               image_url = "https://example.com/logo.png",
-               mode = "OVER_CELL", size = c(200L, 200L))
+               image_url = "https://example.com/logo.png")
 ```
 
-Caveats:
-- IN_CELL is the simpler path — works in regular reads / exports.
-- OVER_CELL needs an actual image upload via the Drive API to be useful;
-  the helper exposes the position request but for production overlay
-  images, prefer `drive_upload()` + a chart workaround.
+The URL must be public http(s). A floating image over the grid is not possible
+through the Sheets API: `mode = "OVER_CELL"` stops with an error.
 
 ## Bulk find/replace (`findReplace`)
 

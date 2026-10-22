@@ -2,7 +2,7 @@
 name: r-googlesheets4
 description: "Builds, formats and visually checks Google Sheets from R with googlesheets4 and the Sheets API v4 batchUpdate: cell styling (fonts, fills, borders, freezes), formulas, charts, conditional formatting, banded/pivot/protected ranges, multi-tab P&L, budget and KPI reports, scheduled Rscript refreshes, and a PDF render-and-review loop that catches truncated text, bad column widths and misalignment. Use when the user wants to create, write, format, refresh or QA a Google Sheet from R, or connect R to a Google account (gs4_auth, gs4_create, sheet_write, range_write). Not for .xlsx output, a plain read_sheet() to a tibble, or Google Sheets from Python or Apps Script."
 license: MIT
-compatibility: "Needs R (Rscript), the CRAN packages googlesheets4, googledrive and gargle, network access and a Google account. Never installs anything without asking the user first."
+compatibility: "Needs R (Rscript), the CRAN packages googlesheets4, googledrive and gargle (plus httpuv for the sign-in), network access and a Google account. Never installs anything without asking the user first."
 metadata:
   version: "3.1.0"
   homepage: "https://github.com/salvadoraveldano/r-googlesheets4"
@@ -77,7 +77,9 @@ Branch on the last line, `GS_SETUP state=…`:
 The full state machine, wording, access levels and failure branches are in
 [references/setup-protocol.md](references/setup-protocol.md). Read it when any
 state other than `READY` appears. Build scripts call `gs_connect()` only, never
-`gs4_auth()` directly.
+`gs4_auth()` directly. `gs_connect()` with no argument uses the saved default
+account; when Step 0 signed in a different account (the `email=` of the `READY`
+line differs from the default), the script calls `gs_connect("<that email>")`.
 
 ## Workflow
 
@@ -98,8 +100,12 @@ state other than `READY` appears. Build scripts call `gs_connect()` only, never
    script, rebuild, repeat (max 3 loops). Skipping this step ships sheets whose
    values are right and whose rendering is broken.
 6. **Hand off a script that runs without you.** Tell the user:
-   - the script path and the exact rerun command (`SHEET_ID=<id> Rscript build.R`), and
-     that rerunning needs no model;
+   - the script path and the exact rerun command (`SHEET_ID=<id> Rscript build.R`, with
+     `GS_SCOPE_LEVEL=<level>` in front when the build used a level other than `sheets`),
+     and that rerunning needs no model;
+   - that the script loads the helpers from this skill's folder (give the path): to run
+     it on another machine, in CI or after the skill moves, copy `scripts/` next to it
+     and point `SKILL` (or `GS_SKILL_DIR`) at that copy;
    - to keep the script in version control, with no secrets in it;
    - a plain-language walkthrough of what it does and where the key formulas live
      (offer one if you have not read the script), and to do one rerun themselves first;
@@ -113,7 +119,7 @@ SKILL <- Sys.getenv("GS_SKILL_DIR", "${CLAUDE_SKILL_DIR}")   # absolute path to 
 for (f in c("gs_helpers.R", "gs_buffer.R", "gs_qa.R", "gs_visual_qa.R"))
   source(file.path(SKILL, "scripts", f))
 
-gs_connect()                                   # uses the login saved in Step 0
+gs_connect()                                   # default account; gs_connect("<email>") for another one
 
 ss  <- gs_open_or_create("Quick Demo", "Summary")   # prints the id; reuse via SHEET_ID
 sheet_write(head(mtcars), ss = ss, sheet = "Summary")
@@ -130,14 +136,14 @@ gs4_browse(ss)
 
 # Verify: cells, then the rendered look
 audit_chart_sources(as.character(ss))      # every tab
-qa <- visual_qa(ss)        # qa$findings (tibble), qa$pages (PNG paths) -> Read() them
+qa <- visual_qa(ss)        # qa$findings (tibble), qa$pages (absolute PNG paths that outlive Rscript) -> Read() them
 ```
 
 Sharing and moving files (`drive_share()`, `drive_mv()`) need the `drive` access
 level; ask the user first, then use `gs_require_level()` in the script. Put the
 exposure warnings in that same question, before the user agrees (list in
 [drive-integration.md](references/drive-integration.md#what-a-shared-sheet-exposes)),
-and give the exact sign-in command: `GS_SCOPE_LEVEL=drive bash scripts/gs_setup.sh auth <email>`.
+and give the exact sign-in command: `GS_SCOPE_LEVEL=drive bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" auth <email>`.
 
 ## Theming
 

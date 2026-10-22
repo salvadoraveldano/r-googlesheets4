@@ -10,7 +10,8 @@
 #   install           Install the missing R packages from CRAN (minutes).
 #   auth    [email]   Sign in to Google for that account (default: the saved
 #                     one). Opens the consent page in the browser, waits for
-#                     "Allow", verifies, saves the account as the default.
+#                     "Allow", verifies. Saves the account as the default only
+#                     when no default exists yet or no email was given.
 #                     Silent (no browser) if a valid login already exists.
 #   verify  [email]   Live check that gs_connect() works for the account.
 #
@@ -31,10 +32,12 @@
 #   GS_OAUTH_CACHE   token cache dir (default: gargle's OS default)
 #   GS_CONFIG        path of the file that remembers the default account
 #   GS_EMAIL         account to use when none is given on the command line
-#   GS_LIB           R library to install packages into
+#   GS_OAUTH_CLIENT  your own OAuth client JSON (default: the shared tidyverse client)
 #   GS_AUTH_TIMEOUT  seconds to wait for the browser sign-in (default 300)
 #   GS_NO_BROWSER=1  never launch a browser (link is still printed)
+#   GS_IPV4=1        force IPv4 for Google calls (networks with broken IPv6 DNS)
 #   GS_SCOPE_LEVEL   sheets (default) | readonly | export | drive — see gs_helpers.R
+# GOOGLE_APPLICATION_CREDENTIALS is ignored: use GS_SA_JSON for a service account.
 # =============================================================================
 
 PKGS     <- c("googlesheets4", "googledrive", "gargle", "httr", "httpuv", "glue")
@@ -72,8 +75,33 @@ emit <- function(state, email = "-", reason = "-", next_cmd = "-", cached = NULL
   quit(save = "no", status = EXIT_CODES[[state]])
 }
 
+#' Packages that are absent, plus gargle older than 1.3.0 (no with_cred_funs()),
+#' which install.packages() then upgrades.
 missing_pkgs <- function() {
-  PKGS[!vapply(PKGS, function(p) requireNamespace(p, quietly = TRUE), logical(1))]
+  ok <- vapply(PKGS, function(p) requireNamespace(p, quietly = TRUE), logical(1))
+  if (ok[["gargle"]] && utils::packageVersion("gargle") < "1.3.0") ok[["gargle"]] <- FALSE
+  PKGS[!ok]
+}
+
+#' Stop with AUTH_FAILED when GS_OAUTH_CLIENT is set but unusable. Returns the
+#' client (or NULL for the shared tidyverse one).
+client_or_exit <- function() {
+  tryCatch(.gs_oauth_client(), error = function(e) {
+    say(conditionMessage(e))
+    emit("AUTH_FAILED", reason = "oauth-client", next_cmd = "fix-GS_OAUTH_CLIENT")
+  })
+}
+
+client_label <- function(cl) {
+  if (is.null(cl)) "the shared tidyverse OAuth app" else paste0("your OAuth client from GS_OAUTH_CLIENT (", cl$id, ")")
+}
+
+#' Should `auth` save the signed-in account as the default? Only when no email
+#' was given on the command line (so `GS_EMAIL=x auth` changes the default) or no
+#' default exists yet, and never when the user picked another account in the
+#' browser than the one asked for (re-running `auth <wanted>` then recovers).
+should_save_default <- function(email_arg, have_default, mismatch) {
+  !mismatch && (is.null(email_arg) || !have_default)
 }
 
 require_pkgs_or_exit <- function() {
@@ -109,8 +137,11 @@ open_browser <- function(url) {
            error = function(e) "")
 }
 
-# "ok" = the login has exactly the scopes of the current GS_SCOPE_LEVEL
-scope_label <- function(logins) ifelse(logins$has_scope, GS_SCOPE_LEVEL, "other-scopes")
+# The level name = usable now; other-client = made with another OAuth client than
+# GS_OAUTH_CLIENT; other-scopes = made for another access level.
+scope_label <- function(logins) {
+  ifelse(logins$has_scope, GS_SCOPE_LEVEL, ifelse(logins$client_ok, "other-scopes", "other-client"))
+}
 
 cached_summary <- function(logins) {
   if (!nrow(logins)) return("-")
@@ -155,14 +186,15 @@ cmd_status <- function(email_arg = NULL) {
     emit("READY", email = "service-account")
   }
 
+  say("Sign-in app: ", client_label(client_or_exit()))
   cache  <- gs_oauth_cache()
   logins <- gs_cached_logins(cache)
   say("Token cache: ", cache, if (dir.exists(cache)) "" else " (not created yet)")
   say("Saved Google logins: ", if (nrow(logins)) cached_summary(logins) else "none")
   bad <- attr(logins, "unreadable")
   if (length(bad)) {
-    say("Unreadable token file(s) in the cache (they break every sign-in until moved aside; ",
-        "`auth` does that automatically): ", paste(basename(bad), collapse = ", "))
+    say("Unreadable token file(s) in the cache (they break a new browser sign-in; ",
+        "`auth` moves them aside when it signs in): ", paste(basename(bad), collapse = ", "))
   }
 
   email <- resolve_email_or_exit(email_arg, cached = cached_summary(logins))
@@ -177,7 +209,9 @@ cmd_status <- function(email_arg = NULL) {
     emit("READY", email = email, cached = cached_summary(logins))
   }
   reason <- if (any(tolower(logins$email) == email)) "token-lacks-scope" else "no-saved-login"
-  say("A one-time Google sign-in is needed for ", email, " (", reason, ").")
+  other_client <- any(logins$email == email & !logins$client_ok)
+  say("A one-time Google sign-in is needed for ", email, " (", reason,
+      if (other_client) "; its saved login was made with another OAuth client than GS_OAUTH_CLIENT", ").")
   emit("NEEDS_AUTH", email = email, reason = reason,
        next_cmd = paste("auth", email), cached = cached_summary(logins))
 }
@@ -192,12 +226,8 @@ cmd_install <- function() {
   options(repos = c(CRAN = "https://cloud.r-project.org"),
           install.packages.compile.from.source = "never")   # prefer CRAN binaries
 
-  lib <- Sys.getenv("GS_LIB", "")
-  if (!nzchar(lib)) {
-    writable <- .libPaths()[file.access(.libPaths(), 2) == 0]
-    lib <- if (length(writable)) writable[1] else Sys.getenv("R_LIBS_USER")
-  }
-  lib <- path.expand(lib)
+  writable <- .libPaths()[file.access(.libPaths(), 2) == 0]
+  lib <- path.expand(if (length(writable)) writable[1] else Sys.getenv("R_LIBS_USER"))
   if (!dir.exists(lib)) dir.create(lib, recursive = TRUE, showWarnings = FALSE)
   .libPaths(c(lib, .libPaths()))
 
@@ -214,7 +244,8 @@ cmd_install <- function() {
       say("On Linux these need system libraries: libcurl4-openssl-dev libssl-dev ",
           "(Debian/Ubuntu) or libcurl-devel openssl-devel (Fedora/RHEL).")
     }
-    say("If the library is not writable, set GS_LIB=~/R/library and re-run install.")
+    say("If no R library is writable: create a folder such as ~/R/library, add the line ",
+        "R_LIBS_USER=~/R/library to ~/.Renviron yourself (every R process reads it), then re-run install.")
     emit("NEEDS_INSTALL", reason = paste(still, collapse = ","), next_cmd = "fix-system-deps")
   }
   say("R packages installed.")
@@ -230,7 +261,7 @@ explain_signin <- function(email) {
       " Opening the Google sign-in page in your browser.\n",
       "   1. Pick the account ", email, "\n",
       "   2. Click 'Allow' (access level: ", GS_SCOPE_LEVEL, " — ", scope_plain(), ")\n",
-      "      for the standard Tidyverse app, no Google Cloud setup needed)\n",
+      "      for ", client_label(.gs_oauth_client()), "\n",
       "   3. When the tab says 'Authentication complete', come back here.\n",
       " This login is saved on this computer, so it only happens once.\n",
       "==========================================================================\n",
@@ -252,8 +283,17 @@ classify_auth_error <- function(msg, timed_out = FALSE, timeout = NA) {
   list(reason = "other", text = msg)
 }
 
-pid_alive <- function(pid) {
-  !is.na(pid) && isTRUE(tryCatch(tools::pskill(pid, 0L), error = function(e) FALSE))
+#' Is the sign-in that wrote `lock` still waiting? POSIX: signal 0 probes the pid.
+#' Windows has no signal 0 (pskill there terminates the process), so the lock
+#' counts as live while it is younger than the sign-in timeout plus a minute.
+# ponytail: Windows branch untested on a real Windows machine.
+pid_alive <- function(pid, lock = NULL, timeout = 300) {
+  if (is.na(pid)) return(FALSE)
+  if (.Platform$OS.type == "windows") {
+    age <- as.numeric(difftime(Sys.time(), file.mtime(lock), units = "secs"))
+    return(isTRUE(age < timeout + 60))
+  }
+  isTRUE(tryCatch(tools::pskill(pid, 0L), error = function(e) FALSE))
 }
 
 #' Run the browser OAuth flow (or a silent cache hit) and install the token in
@@ -280,12 +320,15 @@ run_oauth <- function(email, cache) {
         paste(basename(bad), collapse = ", "))
   }
 
+  timeout <- suppressWarnings(as.numeric(Sys.getenv("GS_AUTH_TIMEOUT", "300")))
+  if (is.na(timeout) || timeout <= 0) timeout <- 300
+
   # Guard against two sign-ins waiting at once (each would open a Google tab).
   lock <- file.path(cache, ".gs_setup.auth.lock")
   if (file.exists(lock)) {
     info <- tryCatch(readLines(lock, warn = FALSE), error = function(e) character())
     pid  <- suppressWarnings(as.integer(info[1]))
-    if (pid_alive(pid)) {
+    if (pid_alive(pid, lock, timeout)) {
       return(list(ok = FALSE, reason = "in-progress",
                   text = paste0("Another sign-in (", info[2], ", pid ", pid,
                                 ") is already waiting in the browser. Finish that tab instead of starting a new one.")))
@@ -307,14 +350,17 @@ run_oauth <- function(email, cache) {
     say("Port 1410 is busy — using port ", port, " for the sign-in redirect.")
   }
 
-  timeout <- suppressWarnings(as.numeric(Sys.getenv("GS_AUTH_TIMEOUT", "300")))
-  if (is.na(timeout) || timeout <= 0) timeout <- 300
-
   # gargle refuses OAuth in a non-interactive session; rlang_interactive is the
   # switch. The explicit cache path avoids gargle's "OK to cache?" question.
   old <- options(rlang_interactive = TRUE, gargle_oauth_cache = cache,
                  gargle_verbosity = "debug")
   on.exit(options(old), add = TRUE)
+
+  # Only the user OAuth flow may answer: without this, a service-account key in
+  # GOOGLE_APPLICATION_CREDENTIALS (or a GCE VM) would be taken instead, silently.
+  gargle::local_cred_funs(funs = list(credentials_user_oauth2 = gargle::credentials_user_oauth2))
+  cl <- .gs_oauth_client()
+  if (!is.null(cl)) googlesheets4::gs4_auth_configure(client = cl)
 
   # Timeout: a `later` timer that throws inside httr's listener loop (which
   # polls later via httpuv::service()). Deterministic, unlike setTimeLimit(),
@@ -373,32 +419,54 @@ cmd_auth <- function(email_arg = NULL) {
   require_pkgs_or_exit()
   load_helpers()
   email  <- resolve_email_or_exit(email_arg)
+  client_or_exit()
   cache  <- gs_oauth_cache()
   logins <- gs_cached_logins(cache)
-  cached <- gs_has_login(logins, email)
-  if (cached) say("A saved login for ", email, " already exists — checking it (no browser needed).")
+  saved  <- .gs_load_token(logins, email, cache)
+  cached <- !is.null(saved)
 
-  res <- run_oauth(email, cache)
-  if (!isTRUE(res$ok)) {
-    say("Sign-in did not complete: ", res$text)
-    emit("AUTH_FAILED", email = email, reason = res$reason,
-         next_cmd = if (identical(res$reason, "in-progress")) "wait" else paste("auth", email))
+  # Never escalate a "silent" check into a browser flow the user was not told
+  # about: remove the dead token (only that file) and hand control back so the
+  # agent can explain the sign-in first.
+  token_dead <- function(why) {
+    say("The saved login for ", email, " no longer works (", why,
+        "). Removed it — a new Google sign-in is needed.")
+    unlink(saved$file)
+    googlesheets4::gs4_deauth(); googledrive::drive_deauth()
+    emit("NEEDS_AUTH", email = email, reason = "token-revoked", next_cmd = paste("auth", email))
+  }
+
+  if (cached) {
+    # The same loader gs_connect() uses, so this stays silent whenever status said READY.
+    # (Unreadable files elsewhere in the cache only matter to run_oauth, which moves them aside.)
+    say("A saved login for ", email, " already exists — checking it (no browser needed).")
+    use <- .gs_use_token(saved$token)
+    if (identical(use, "revoked")) token_dead("Google refused to refresh it")
+    if (!identical(use, "ok")) {
+      say("Could not reach Google to check the saved login (", use, "). Nothing was removed — fix connectivity, then run `verify`.")
+      emit("AUTH_FAILED", email = email, reason = "network", next_cmd = paste("verify", email))
+    }
+  } else {
+    res <- run_oauth(email, cache)
+    if (!isTRUE(res$ok)) {
+      say("Sign-in did not complete: ", res$text)
+      emit("AUTH_FAILED", email = email, reason = res$reason,
+           next_cmd = switch(res$reason, "in-progress" = "wait", port = "-",
+                             network = paste("verify", email), paste("auth", email)))
+    }
   }
 
   # Live verification of BOTH API hosts. A revoked cached token surfaces here.
   chk    <- gs_live_check(googlesheets4::gs4_token(), sheets = TRUE)
   actual <- tryCatch(suppressMessages(googlesheets4::gs4_user()), error = function(e) NA_character_)
   if (!chk$ok) {
-    if (chk$auth_problem && cached) {
-      # Never escalate a "silent" check into a browser flow the user was not
-      # told about: remove the dead token (only that one) and
-      # hand control back so the agent can explain the sign-in first.
-      say("The saved login for ", email, " no longer works (", chk$message,
-          "). Removed it — a new Google sign-in is needed.")
-      unlink(logins$file[logins$email == email & logins$has_scope])
-      googlesheets4::gs4_deauth(); googledrive::drive_deauth()
-      emit("NEEDS_AUTH", email = email, reason = "token-revoked", next_cmd = paste("auth", email))
+    if (isTRUE(chk$api_disabled)) {
+      say("Signed in, but a Google API is not enabled in the OAuth client's Cloud project (", chk$message,
+          "). Enable the Google Sheets API (and the Google Drive API for export/drive), then run `verify`. ",
+          "The login was kept.")
+      emit("AUTH_FAILED", email = email, reason = "api-disabled", next_cmd = paste("verify", email))
     }
+    if (chk$auth_problem && cached) token_dead(chk$message)
     if (chk$auth_problem) {
       say("Google accepted the sign-in but refuses the API call for ", email, ": ", chk$message)
       emit("AUTH_FAILED", email = email, reason = "verify-failed", next_cmd = paste("auth", email))
@@ -410,17 +478,21 @@ cmd_auth <- function(email_arg = NULL) {
          next_cmd = paste("verify", email))
   }
 
-  # Always adopt the identity Google reports (canonical, lower-case).
+  # Always report the identity Google returns (canonical, lower-case).
   mismatch <- !is.na(actual) && tolower(actual) != email
   if (mismatch) {
-    say("You signed in as ", actual, " (not ", email, "). Saving ", tolower(actual),
-        " as the account for Google Sheets. To use ", email, " instead, run: ",
-        SETUP_SH, " auth ", email, " and pick that account in the browser.")
+    say("You signed in as ", actual, " (not ", email, "). Its login is saved. To use ", email,
+        " instead, run: ", SETUP_SH, " auth ", email, " and pick that account in the browser.")
   }
   if (!is.na(actual)) email <- tolower(actual)
 
-  gs_save_config_email(email)
-  say("Connected as ", email, " (", GS_SCOPE_LEVEL, "). Default account saved to ", gs_config_path(), ".")
+  if (should_save_default(email_arg, !is.null(gs_config_email()), mismatch)) {
+    gs_save_config_email(email)
+    say("Connected as ", email, " (", GS_SCOPE_LEVEL, "). Default account saved to ", gs_config_path(), ".")
+  } else {
+    say("Connected as ", email, " (", GS_SCOPE_LEVEL, "). Default account unchanged (",
+        gs_config_email() %||% "none", "); scripts pick this one with gs_connect(\"", email, "\").")
+  }
   emit("READY", email = email, reason = if (mismatch) "mismatch" else "-")
 }
 
@@ -432,10 +504,16 @@ cmd_verify <- function(email_arg = NULL) {
   if (inherits(res, "error")) {
     msg <- conditionMessage(res)
     say(msg)
-    if (nzchar(Sys.getenv("GS_SA_JSON", ""))) {
-      emit("AUTH_FAILED", reason = if (grepl("network problem", msg)) "network" else "service-account",
-           next_cmd = "fix-GS_SA_JSON")
+    if (grepl("API is not enabled", msg)) {   # before the GS_SA_JSON branch: it applies to both
+      emit("AUTH_FAILED", email = gs_resolve_email(email_arg) %||% "-", reason = "api-disabled",
+           next_cmd = "verify")
     }
+    if (nzchar(Sys.getenv("GS_SA_JSON", ""))) {
+      net <- grepl("network problem", msg)
+      emit("AUTH_FAILED", reason = if (net) "network" else "service-account",
+           next_cmd = if (net) "verify" else "fix-GS_SA_JSON")
+    }
+    if (grepl("GS_OAUTH_CLIENT", msg)) emit("AUTH_FAILED", reason = "oauth-client", next_cmd = "fix-GS_OAUTH_CLIENT")
     target <- gs_resolve_email(email_arg)
     if (is.null(target)) emit("NEEDS_EMAIL", next_cmd = "auth <email>")
     if (grepl("Could not reach Google", msg)) {

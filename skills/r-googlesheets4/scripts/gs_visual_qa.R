@@ -48,7 +48,7 @@ if (!exists("export_sheet_as_pdf")) stop("Source gs_qa.R before gs_visual_qa.R")
 #' (tab, range, severity, issue, fix); zero rows means clean.
 #' severity: blocker (content invisible/clipped), major (looks broken), minor (polish).
 audit_layout <- function(ss, sheet_name, max_wide_px = 400L, min_narrow_px = 40L) {
-  ss_id <- as.character(ss)
+  ss_id <- as.character(googlesheets4::as_sheets_id(ss))
   fields <- paste0(
     "sheets(properties(title,gridProperties),merges,",
     "data(columnMetadata(pixelSize,hiddenByUser),rowMetadata(pixelSize,hiddenByUser),",
@@ -58,8 +58,15 @@ audit_layout <- function(ss, sheet_name, max_wide_px = 400L, min_narrow_px = 40L
     endpoint = "sheets.spreadsheets.get",
     params = list(spreadsheetId = ss_id, ranges = sprintf("'%s'", gsub("'", "''", sheet_name)),
                   includeGridData = TRUE, fields = fields))
-  body <- httr::content(googlesheets4::request_make(req), as = "parsed")
-  .audit_sheet(body$sheets[[1L]], sheet_name, max_wide_px, min_narrow_px)
+  resp <- googlesheets4::request_make(req)
+  httr::stop_for_status(resp)          # a failed read must not pass as "clean"
+  .audit_sheet(httr::content(resp, as = "parsed")$sheets[[1L]], sheet_name, max_wide_px, min_narrow_px)
+}
+
+#' Default visual_qa() output folder for a sheet id: in the user cache, so it
+#' outlives the Rscript run (tempdir() does not) and stays out of the project.
+.gs_visual_qa_dir <- function(ss_id) {
+  file.path(tools::R_user_dir("r-googlesheets4", "cache"), "visual_qa", ss_id)
 }
 
 # Pure analysis of one parsed `sheets[[i]]` object (unit-testable offline)
@@ -191,19 +198,31 @@ pdf_to_pngs <- function(pdf, dpi = 110L) {
 }
 
 #' Visual QA for one or more tabs: layout audit + PDF + page images.
-#' @param tabs character vector of tab names (NULL = all tabs)
-#' @return list(findings = tibble, pdfs = named chr, pages = named list of PNG paths)
+#' @param tabs    character vector of tab names (NULL = all tabs)
+#' @param out_dir where the PDFs and PNGs go. NULL (default) = the user cache,
+#'   `tools::R_user_dir("r-googlesheets4", "cache")/visual_qa/<sheet id>`, which
+#'   outlives the Rscript run (tempdir() is deleted when R exits, before the agent
+#'   can Read() the pages) and stays out of the project folder.
+#' @return list(findings = tibble, pdfs = named chr, pages = named list of PNG
+#'   paths), all paths absolute.
 #' Then: Read() each PNG, score it with references/visual-review-rubric.md,
 #' fix the BUILD SCRIPT (not the sheet by hand), rebuild, re-run. Max 3 loops.
-visual_qa <- function(ss, tabs = NULL, out_dir = file.path(tempdir(), "visual_qa"),
-                      pause_s = 10, landscape = TRUE) {
+visual_qa <- function(ss, tabs = NULL, out_dir = NULL, pause_s = 10, landscape = TRUE) {
+  ss <- googlesheets4::as_sheets_id(ss)
+  out_dir <- out_dir %||% .gs_visual_qa_dir(as.character(ss))
   dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-  tabs <- tabs %||% googlesheets4::sheet_names(ss)
+  out_dir <- normalizePath(out_dir)
+  props <- googlesheets4::sheet_properties(ss)
+  tabs <- tabs %||% props$name
   findings <- list(); pdfs <- character(); pages <- list()
   for (i in seq_along(tabs)) {
     tab <- tabs[i]
     findings[[tab]] <- audit_layout(ss, tab)
-    pdf <- file.path(out_dir, paste0(gsub("[^A-Za-z0-9]+", "_", tab), ".pdf"))
+    # Tab name + sheetId: unique per tab ("P&L" and "P L" would clash on the name alone).
+    base <- paste0(gsub("[^A-Za-z0-9]+", "_", tab), "_", props$id[match(tab, props$name)])
+    # No stale pages from a longer earlier run; only this tab's own files are matched.
+    unlink(list.files(out_dir, pattern = paste0("^", base, "(-[0-9]+\\.png|\\.pdf)$"), full.names = TRUE))
+    pdf <- file.path(out_dir, paste0(base, ".pdf"))
     export_sheet_as_pdf(ss, tab, pdf, extra = sprintf(
       "&portrait=%s&size=A4&fitw=true&gridlines=false", tolower(!landscape)))
     pdfs[[tab]] <- pdf
@@ -211,7 +230,7 @@ visual_qa <- function(ss, tabs = NULL, out_dir = file.path(tempdir(), "visual_qa
     if (i < length(tabs)) Sys.sleep(pause_s)  # export endpoint 429s under bursts
   }
   f <- do.call(rbind, unname(findings))
-  message(sprintf("[visual_qa] %d finding(s): %d blocker, %d major, %d minor",
-                  nrow(f), sum(f$severity == "blocker"), sum(f$severity == "major"), sum(f$severity == "minor")))
+  message(sprintf("[visual_qa] %d finding(s): %d blocker, %d major, %d minor. Pages in %s",
+                  nrow(f), sum(f$severity == "blocker"), sum(f$severity == "major"), sum(f$severity == "minor"), out_dir))
   list(findings = f, pdfs = pdfs, pages = pages)
 }

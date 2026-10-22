@@ -34,6 +34,11 @@ request_make     <- googlesheets4::request_make
 # Null-coalesce (avoids dragging rlang in for one operator).
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
+# GS_IPV4=1: force IPv4 for every Google call in this process. Fixes networks
+# where only some googleapis hosts resolve over IPv6. Set here, not in a console,
+# because gs_setup.sh and each build script start their own R process.
+if (nzchar(Sys.getenv("GS_IPV4"))) httr::set_config(httr::config(ipresolve = 1L))
+
 # ── Coordinates ------------------------------------------------------------
 
 #' 1-based row/col → 0-based GridRange object
@@ -775,7 +780,7 @@ fmt_auto_resize_rows <- function(sheet_id, start_row, end_row) {
 batch_format <- function(ss, requests, strict = FALSE) {
   if (length(requests) == 0L) return(invisible(NULL))
   requests <- unname(requests)   # a NAMED list (e.g. lapply over a named vector) is sent as a JSON object -> 400 'Unknown name "1"'
-  ss_id <- as.character(ss)
+  ss_id <- as.character(googlesheets4::as_sheets_id(ss))   # a URL or dribble resolves too
 
   req <- googlesheets4::request_generate(
     endpoint = "sheets.spreadsheets.batchUpdate",
@@ -892,7 +897,9 @@ read_values <- function(ss, ranges, value_render = "FORMATTED_VALUE") {
 # named after the identity Google reports, which is lower-case).
 #
 # Env overrides: GS_OAUTH_CACHE (token dir), GS_CONFIG (account file),
-# GS_EMAIL (account), GS_SA_JSON (service-account key → headless/cron auth).
+# GS_EMAIL (account), GS_SA_JSON (service-account key → headless/cron auth),
+# GS_OAUTH_CLIENT (your own OAuth client JSON instead of the shared tidyverse one),
+# GS_IPV4 (force IPv4). GOOGLE_APPLICATION_CREDENTIALS is ignored on purpose.
 
 # Least privilege: the default level only touches spreadsheets. Raise the level
 # (env GS_SCOPE_LEVEL) only when the task needs it, and only after the user agrees:
@@ -1113,7 +1120,8 @@ gs_require_level <- function(what, levels = "drive") {
   if (GS_SCOPE_LEVEL %in% levels) return(invisible(TRUE))
   stop(what, " needs Drive access (GS_SCOPE_LEVEL=", paste(levels, collapse = " or "), "; current: ",
        GS_SCOPE_LEVEL, ").\nAsk the user to approve it, then run once:  GS_SCOPE_LEVEL=", levels[[1]],
-       " ", GS_SETUP_SH, " auth <email>   and set GS_SCOPE_LEVEL=", levels[[1]], " for the build script.",
+       " ", GS_SETUP_SH, " auth <email>\nthen run the build as GS_SCOPE_LEVEL=", levels[[1]],
+       " Rscript build.R (or Sys.setenv it BEFORE source(\"gs_helpers.R\"), which reads it once).",
        call. = FALSE)
 }
 
@@ -1162,12 +1170,30 @@ gs_oauth_cache <- function() {
   rappdirs::user_cache_dir("gargle")
 }
 
-#' Inventory of saved logins: data.frame(email, scopes, has_scope, file).
+#' Your own OAuth client from env GS_OAUTH_CLIENT (path to a "Desktop app"
+#' client JSON from Google Cloud), or NULL for the shared tidyverse client.
+#' An env var, not gs4_auth_configure() in a console: that setting dies with
+#' the R session, and setup and every build run in their own Rscript.
+.gs_oauth_client <- function() {
+  p <- .gs_env("GS_OAUTH_CLIENT")
+  if (is.null(p)) return(NULL)
+  p <- path.expand(p)
+  if (!file.exists(p)) stop("GS_OAUTH_CLIENT=", p, " does not exist.", call. = FALSE)
+  tryCatch(gargle::gargle_oauth_client_from_json(p),
+           error = function(e) stop("GS_OAUTH_CLIENT=", p, " is not an OAuth client JSON: ",
+                                    conditionMessage(e), call. = FALSE))
+}
+
+#' Inventory of saved logins: data.frame(email, scopes, has_scope, client, client_ok, mtime, file).
 #' `has_scope` is TRUE only for a token with exactly the scope set of the current
-#' GS_SCOPE_LEVEL (plus userinfo.email) — the only one gargle will match silently.
+#' GS_SCOPE_LEVEL (plus userinfo.email) and, when GS_OAUTH_CLIENT is set, made by
+#' that client. `client` is the OAuth client id the token was made with;
+#' `client_ok` is FALSE when GS_OAUTH_CLIENT is set and the token is from another client.
 gs_cached_logins <- function(cache = gs_oauth_cache()) {
-  empty <- data.frame(email = character(), scopes = character(),
-                      has_scope = logical(), file = character(), stringsAsFactors = FALSE)
+  empty <- data.frame(email = character(), scopes = character(), has_scope = logical(),
+                      client = character(), client_ok = logical(), mtime = as.POSIXct(character()),
+                      file = character(), stringsAsFactors = FALSE)
+  want_client <- .gs_oauth_client()$id
   if (!dir.exists(cache)) return(empty)
   files <- list.files(cache, full.names = TRUE)
   files <- files[grepl("_[^/]+@[^/]+$", basename(files)) & !dir.exists(files)]
@@ -1179,9 +1205,12 @@ gs_cached_logins <- function(cache = gs_oauth_cache()) {
     em <- tryCatch(tok$email, error = function(e) NULL)
     if (is.null(em) || is.na(em) || !nzchar(em)) em <- sub("^[^_]+_", "", basename(f))
     sc <- tryCatch(as.character(tok$params$scope), error = function(e) character())
+    cl <- tryCatch(tok$client$id %||% tok$app$key, error = function(e) NULL) %||% NA_character_
+    client_ok <- is.null(want_client) || identical(cl, want_client)
     data.frame(email = tolower(em), scopes = paste(sc, collapse = " "),
-               has_scope = setequal(sc, c(GS_SCOPE, GS_EMAIL_SCOPE)),
-               file = f, stringsAsFactors = FALSE)
+               has_scope = setequal(sc, c(GS_SCOPE, GS_EMAIL_SCOPE)) && client_ok,
+               client = cl, client_ok = client_ok, mtime = file.mtime(f), file = f,
+               stringsAsFactors = FALSE)
   })
   rows <- Filter(Negate(is.null), rows)
   out <- if (length(rows)) do.call(rbind, rows) else empty
@@ -1195,11 +1224,51 @@ gs_has_login <- function(logins, email) {
   nrow(logins) > 0 && any(logins$email == tolower(email) & logins$has_scope)
 }
 
+#' Load the saved login for `email` from the cache: the newest file that has the
+#' current scope set (and the GS_OAUTH_CLIENT client, when set). Returns
+#' list(token, file) or NULL. The token is used as-is (gs4_auth(token = )), so
+#' gargle's hash-based lookup never runs: a token made with another client type
+#' (RStudio Server) or copied from another machine still loads, and refreshes
+#' with the client it was made with.
+.gs_load_token <- function(logins, email, cache) {
+  hit <- logins[logins$email == tolower(email) & logins$has_scope, , drop = FALSE]
+  if (!nrow(hit)) return(NULL)
+  f <- hit$file[[which.max(hit$mtime)]]
+  tok <- readRDS(f)
+  tok$cache_path <- cache   # tokens store an absolute path; a copied file would refresh into the old one
+  list(token = tok, file = f)
+}
+
+#' Install a loaded user token in googlesheets4 and nothing else: only gargle's
+#' bring-your-own source runs, so GOOGLE_APPLICATION_CREDENTIALS, gcloud or a GCE
+#' VM can never stand in for the user. gargle refreshes the token here.
+#' Returns "ok", "revoked" (Google refused the refresh; gargle deleted the file)
+#' or the error text (refresh never reached Google, usually the network).
+.gs_use_token <- function(tok) {
+  revoked <- FALSE
+  res <- withCallingHandlers(
+    tryCatch(gargle::with_cred_funs(
+      funs = list(credentials_byo_oauth2 = gargle::credentials_byo_oauth2),
+      googlesheets4::gs4_auth(token = tok)), error = function(e) e),
+    warning = function(w) {
+      if (grepl("refresh", conditionMessage(w), ignore.case = TRUE)) {
+        revoked <<- TRUE
+        invokeRestart("muffleWarning")
+      }
+    })
+  if (revoked) return("revoked")
+  # token_fetch() swallows the real error and suggests calling gs4_auth(); the
+  # skill never does that, so report the plain fact instead.
+  if (inherits(res, "error")) return("the saved token could not be refreshed: no answer from Google")
+  "ok"
+}
+
 #' First live API call with a token. At levels with Drive access it also
 #' authenticates googledrive and calls drive_user(); otherwise it only touches
 #' the Sheets host. `sheets = TRUE` additionally touches the Sheets API host.
 #' Returns list(ok = TRUE, user = list(emailAddress = ...)) or
-#' list(ok = FALSE, auth_problem = <TRUE if the token is dead>, message = ...).
+#' list(ok = FALSE, auth_problem = <TRUE if the token is dead>,
+#'      api_disabled = <TRUE if the API is off in the client's Cloud project>, message = ...).
 #' A revoked/expired token fails its refresh here: gargle warns "Unable to
 #' refresh token" and deletes the cache file. Network failures are NOT auth
 #' problems — the caller must not tell the user to sign in again for those.
@@ -1229,11 +1298,15 @@ gs_live_check <- function(token, sheets = FALSE) {
   if (!inherits(live, "error")) return(list(ok = TRUE, user = live))
   msg  <- conditionMessage(live)
   code <- tryCatch(httr::status_code(live$resp), error = function(e) NULL)
-  auth_problem <- refresh_failed ||
+  # A 403 because the API is off in the OAuth client's Cloud project (likely with
+  # GS_OAUTH_CLIENT) is not a dead token: deleting it would not help.
+  api_disabled <- grepl("SERVICE_DISABLED|accessNotConfigured|has not been used in project",
+                        msg, ignore.case = TRUE)
+  auth_problem <- !api_disabled && (refresh_failed ||
     isTRUE(code %in% c(401L, 403L)) ||
     inherits(live, "http_error_401") || inherits(live, "http_error_403") ||
-    grepl("invalid_grant|Unauthorized|Can't get Google credentials|OAuth2 flow requires", msg)
-  list(ok = FALSE, auth_problem = auth_problem, message = msg)
+    grepl("invalid_grant|Unauthorized|Can't get Google credentials|OAuth2 flow requires", msg))
+  list(ok = FALSE, auth_problem = auth_problem, api_disabled = api_disabled, message = msg)
 }
 
 #' Authenticate googlesheets4 + googledrive from the saved login. Never opens
@@ -1251,6 +1324,11 @@ gs_connect <- function(email = NULL, quiet = FALSE) {
     if (!GS_USES_DRIVE) googledrive::drive_deauth()
     chk <- gs_live_check(tok)
     if (!chk$ok) {
+      if (isTRUE(chk$api_disabled)) {
+        stop("Service account ", basename(sa), " works, but a Google API is not enabled in its Cloud project (",
+             chk$message, ").\nEnable the Google Sheets API (and the Google Drive API for the export/drive ",
+             "levels) in that project, then re-run.", call. = FALSE)
+      }
       stop("Service account ", basename(sa),
            if (chk$auth_problem) " was rejected by Google (" else " could not be verified — network problem (",
            chk$message, ").", call. = FALSE)
@@ -1278,19 +1356,25 @@ gs_connect <- function(email = NULL, quiet = FALSE) {
   old <- options(gargle_oauth_cache = cache, rlang_interactive = FALSE)
   on.exit(options(old), add = TRUE)
 
+  # An unreadable file elsewhere in the cache does not matter here: only the chosen
+  # file is read (gargle's own loader, which reads them all, is not used).
   logins <- gs_cached_logins(cache)
-  bad <- attr(logins, "unreadable")
-  if (length(bad)) {
-    no_login(paste0("Unreadable token file(s) in ", cache, ": ", paste(basename(bad), collapse = ", "),
-                    " — `auth` moves them aside"))
+  saved <- .gs_load_token(logins, email, cache)
+  if (is.null(saved)) no_login()
+  revoked <- function(detail) {
+    stop("The saved Google login for ", email, " no longer works (revoked or expired: ",
+         detail, ").\n", "Run once to sign in again:  ", GS_SETUP_SH, " auth ", email, call. = FALSE)
   }
-  hit <- logins[logins$email == email & logins$has_scope, , drop = FALSE]
-  if (!nrow(hit)) no_login()
-  email <- hit$email[[1]]      # exactly as gargle named the cache file
+  offline <- function(detail) {
+    stop("Could not reach Google to verify the saved login for ", email, " (", detail, ").\n",
+         "The saved login is fine — do NOT sign in again. Check network/VPN/proxy; if only some ",
+         "googleapis hosts fail to resolve, re-run with GS_IPV4=1 set ",
+         "(see references/auth.md, 'Network quirk').", call. = FALSE)
+  }
 
-  res <- tryCatch(googlesheets4::gs4_auth(email = email, scopes = GS_SCOPE, cache = cache),
-                  error = function(e) e)
-  if (inherits(res, "error")) no_login(conditionMessage(res))
+  use <- .gs_use_token(saved$token)
+  if (identical(use, "revoked")) revoked("Google refused to refresh it")
+  if (!identical(use, "ok")) offline(use)
 
   # Least privilege: below the Drive levels, googledrive must NOT quietly pick up
   # some other cached token (for example a full-Drive one from an older install).
@@ -1298,17 +1382,17 @@ gs_connect <- function(email = NULL, quiet = FALSE) {
 
   chk <- gs_live_check(googlesheets4::gs4_token())
   if (!chk$ok) {
-    if (chk$auth_problem) {
-      stop("The saved Google login for ", email, " no longer works (revoked or expired: ",
-           chk$message, ").\n",
-           "Run once to sign in again:  ", GS_SETUP_SH, " auth ", email, call. = FALSE)
+    if (isTRUE(chk$api_disabled)) {
+      stop("The login for ", email, " works, but a Google API is not enabled in the Cloud project of the ",
+           "OAuth client (", chk$message, ").\nEnable the Google Sheets API (and the Google Drive API for the ",
+           "export/drive levels) in that project, then re-run. Do NOT sign in again.", call. = FALSE)
     }
-    stop("Could not reach Google to verify the saved login for ", email, " (", chk$message, ").\n",
-         "The saved login is fine — do NOT sign in again. Check network/VPN/proxy; if only some ",
-         "googleapis hosts fail to resolve, run httr::set_config(httr::config(ipresolve = 1L)) ",
-         "before gs_connect() (see references/auth.md, 'Network quirk').", call. = FALSE)
+    if (chk$auth_problem) revoked(chk$message)
+    offline(chk$message)
   }
 
-  if (!quiet) message("[gs_connect] Connected as ", email, " (", GS_SCOPE_LEVEL, ")")
-  invisible(email)
+  # Report the identity Google returned, not the one that was asked for.
+  who <- tolower(chk$user$emailAddress %||% email)
+  if (!quiet) message("[gs_connect] Connected as ", who, " (", GS_SCOPE_LEVEL, ")")
+  invisible(who)
 }

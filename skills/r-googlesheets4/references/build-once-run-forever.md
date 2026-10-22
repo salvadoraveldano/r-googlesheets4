@@ -21,6 +21,9 @@ to this skill and is not endorsed by either author.
 2. **Keep the script.** Put it in version control. It is the exported artifact.
 3. **Run it without a model.** `Rscript build.R` rebuilds. `SHEET_ID=<id> Rscript build.R`
    rebuilds into the same sheet ([helpers.md](helpers.md), `gs_open_or_create()`).
+   If the build needed a higher access level, put it in the command too
+   (`GS_SCOPE_LEVEL=drive SHEET_ID=<id> Rscript build.R`): every run, cron included,
+   starts a fresh R that only sees the variables it is given.
    Schedule it with cron or CI ([auth.md](auth.md)).
 
 ## Make a build model-free
@@ -28,6 +31,9 @@ to this skill and is not endorsed by either author.
 - Parameters (month, input CSV path, sheet id) at the top of the script or in env vars.
 - Formulas stay as formulas in the sheet, so people can read and edit them by hand.
 - No secrets in the script. Sign-in comes from the saved login or `GS_SA_JSON`.
+- The script `source()`s the helpers from this skill's folder. To run it on another
+  machine, in CI or after the skill is reinstalled elsewhere, copy the skill's
+  `scripts/` folder next to `build.R` (MIT licensed) and point `SKILL` at it.
 - `SHEET_ID` for in-place rebuilds, so refreshes do not create new files, and
   `gs_reset_tabs(ss, TABS)` at the start so a rerun does not stack charts or hit "already exists".
 - A header comment: what it builds, the exact rerun command, which inputs it reads.

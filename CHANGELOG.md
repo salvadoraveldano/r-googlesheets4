@@ -10,6 +10,69 @@
 - `fmt_image_cell()` (IN_CELL): a `"` in `image_url` is doubled, so a crafted URL can no
   longer close the string and add a formula such as `IMPORTXML`. A URL that is not
   `http(s)://` now stops.
+- A service-account key in `GOOGLE_APPLICATION_CREDENTIALS` (or gcloud's default
+  credentials, or a GCE VM) silently replaced the saved user login in `gs_connect()`
+  and `gs_setup.sh auth`, while the console still said "Connected as <you>". Only the
+  saved login or `GS_SA_JSON` is used now, and `gs_connect()` prints the identity
+  Google reports.
+
+**New**
+
+- `GS_OAUTH_CLIENT=/path/client.json`: sign in and build with your own OAuth client.
+  The documented `gs4_auth_configure()` route never worked, because that setting
+  only lasts one R session and setup and every build run in their own `Rscript`.
+  Steps in `auth.md`. `status` says which sign-in app is in use and lists tokens from
+  another client as `other-client`.
+- `GS_IPV4=1` forces IPv4 for setup and builds. The documented console fix could not
+  reach `gs_setup.sh`.
+
+**Fixed**
+
+- `gs_connect()` and the silent `auth` path load the saved token file directly
+  instead of gargle's hash lookup. A token copied to RStudio Server / Posit Cloud
+  (where gargle picks another client type), or made by another client, is found;
+  `status` READY and `gs_connect()` now agree. The loader also points a copied
+  token's refresh at the local cache.
+- `gs_setup.sh auth <other-email>` no longer replaces the default account, as the
+  docs always said. The default changes only on a first sign-in or with
+  `GS_EMAIL=new@x gs_setup.sh auth`. A browser account mismatch is never saved as the default.
+- A revoked token found by `auth` deletes only the file that was used.
+- `auth` `next=` matches the protocol: `port` → `-`, `network` → `verify`; the
+  service-account network case → `verify`. New reasons `oauth-client` and
+  `api-disabled` (a 403 because the API is off in the client's Cloud project no longer
+  counts as a dead token, so a valid login is not deleted). `setup-protocol.md` covers
+  `service-account`, `oauth-client` and `api-disabled`, and says to use
+  `gs_connect("<email>")` when the account signed in is not the default.
+- An unreadable file in the token cache no longer blocks `gs_connect()` (only the
+  chosen token file is read).
+- `visual_qa()` wrote its PDFs and PNGs under `tempdir()`, which R deletes when
+  `Rscript` exits, so the agent could never `Read()` the pages. The default is now
+  `tools::R_user_dir("r-googlesheets4", "cache")/visual_qa/<sheet id>`; old pages of a tab are
+  cleared first and the returned paths are absolute.
+- `batch_format()`, `flush_writes()`, `export_sheet_as_pdf()`, `audit_layout()` and
+  `visual_qa()` accept a sheet URL or dribble (they called `as.character(ss)`).
+- `audit_layout()`, `first_visible_col()`, `count_cond_rules()` and
+  `dump_reference_tab()` stop on an HTTP error instead of reporting a clean result.
+- `fmt_image_cell(mode = "OVER_CELL")` sent a request with an empty object id that
+  could never succeed (and took the whole batch down). It now stops with a clear
+  message; `IN_CELL` is the supported mode.
+- Windows: the `auth` lock check called `tools::pskill(pid, 0)`, which terminates the
+  waiting sign-in there. On Windows the lock now counts as live by age (sign-in
+  timeout + 60 s). Untested on a real Windows machine.
+- `gs_setup.sh install` treats gargle older than 1.3.0 as missing.
+- Docs: rerun and cron commands carry `GS_SCOPE_LEVEL` when the build used a higher
+  level; hand-off says to copy `scripts/` for other machines and CI; the shared-drive
+  example used a `gs4_create(folder =)` argument that does not exist (now
+  `drive_create(type = "spreadsheet")`); the consent wording names httpuv;
+  fix commands print the setup script's absolute path.
+
+**Removed**
+
+- `GS_LIB`: packages installed there were invisible to `status` and to every build,
+  so `install` and `status` looped. Without a writable library, add
+  `R_LIBS_USER=~/R/library` to `~/.Renviron` (the user does this; the agent never edits it).
+- The "Option 2" direct `gs4_auth()` and domain-wide-delegation snippets in `auth.md`,
+  which the skill's own rules forbid and `gs_connect()` does not support.
 
 ## 3.1.0 - 2026-10-08
 

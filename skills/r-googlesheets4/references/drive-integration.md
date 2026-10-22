@@ -117,9 +117,11 @@ perms <- drive_reveal(ss, "permissions")
 
 ## Working with shared drives
 
-For Team Drives / Shared Drives, pass the team drive ID:
+For shared drives, create the file with googledrive (needs the `drive` access
+level; `gs4_create()` has no folder argument):
 
 ```r
 team_drive <- shared_drive_get("FY2026")
-ss <- gs4_create("Budget", folder = as_id(team_drive$id))
+ss <- as_sheets_id(drive_create("Budget", path = as_id(team_drive$id),
+                                type = "spreadsheet"))
 ```

@@ -37,14 +37,14 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 
 - **R**. The skill never installs it for you. No R? See [no-r-alternatives](skills/r-googlesheets4/references/no-r-alternatives.md).
 - **A Unix shell.** Built and tested on macOS. CI runs the syntax and offline checks on Linux. Windows through Git Bash or WSL is untested: the setup script looks for R under `Program Files`, but nobody has run it there yet.
-- The CRAN packages googlesheets4, googledrive and gargle. The skill asks before installing them.
+- The CRAN packages googlesheets4, googledrive and gargle, plus httpuv for the browser sign-in. The skill asks before installing them.
 - A Google account. The first sign-in is one click and needs no Google Cloud project.
 
 > **Using it a lot, or with a team?** The one-click sign-in uses an OAuth client that
 > every googlesheets4 user shares, quota included. If you rebuild sheets often or run
-> this for a team, register your own OAuth client, or a service account for unattended
+> this for a team, register your own OAuth client (`GS_OAUTH_CLIENT`), or a service account for unattended
 > runs. It takes a few minutes and keeps the shared client's quota free for everyone else.
-> Steps: [auth.md](skills/r-googlesheets4/references/auth.md).
+> Steps: [auth.md](skills/r-googlesheets4/references/auth.md#your-own-oauth-client-gs_oauth_client).
 
 - For page images in the visual review: `pdftoppm` (poppler) or the R `pdftools` package.
   Without them the skill still audits the layout and hands the PDF to the agent.

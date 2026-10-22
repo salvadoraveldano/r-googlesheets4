@@ -275,7 +275,7 @@ area_auth <- function() {
   writeLines("not a token", file.path(cache, "x_broken@example.invalid"))
   bad <- gs_cached_logins()
   check("gs_oauth_cache honours GS_OAUTH_CACHE; gs_cached_logins: empty cache, and a corrupt file is reported, not fatal",
-        identical(gs_oauth_cache(), path.expand(cache)) && nrow(empty) == 0L && identical(names(empty), c("email", "scopes", "has_scope", "file")) &&
+        identical(gs_oauth_cache(), path.expand(cache)) && nrow(empty) == 0L && identical(names(empty), c("email", "scopes", "has_scope", "client", "client_ok", "mtime", "file")) &&
           nrow(bad) == 0L && length(attr(bad, "unreadable")) == 1L)
   e <- errs(gs_connect("nobody@example.invalid"))
   check("gs_connect: an account with no saved login stops with the fix command and opens no browser",

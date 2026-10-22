@@ -12,7 +12,7 @@ This skill is built on R. It never installs R for you. Choose one path.
 | Linux | Posit's builds: <https://docs.posit.co/resources/install-r.html> |
 
 Then re-run `bash scripts/gs_setup.sh status`. The skill will ask before it
-installs the three CRAN packages it needs (googlesheets4, googledrive, gargle).
+installs the CRAN packages it needs (googlesheets4, googledrive, gargle, plus httpuv for the sign-in).
 
 ## B. Skip R
 
@@ -27,11 +27,11 @@ The skill's formatting helpers and the visual QA loop do not carry over.
 
 ## Why R is still worth it for this job
 
-- **Zero Google Cloud setup.** googlesheets4 and gargle ship a shared OAuth client, so signing in takes one click. Python and MCP routes usually need you to create a Google Cloud project or a service account first.
+- **Zero Google Cloud setup.** googlesheets4 and gargle ship a shared OAuth client, so signing in takes one click. Python routes and most self-hosted MCP servers need you to create a Google Cloud project or a service account first.
 - **Tidyverse data flow.** Data frames go straight to styled sheets.
 - **The helpers in this skill**: batchUpdate wrappers, charts, banded ranges, conditional formats and the PDF review loop.
 
 Where the shared client falls short: its quota is shared with every other user of
 that client, and its consent screen is not yours. For heavy, team or unattended
-use, register your own OAuth client (`gs4_auth_configure(path = "client.json")`)
-or use a service account (`GS_SA_JSON`). See [auth.md](auth.md).
+use, point `GS_OAUTH_CLIENT` at your own OAuth client JSON, or use a service
+account (`GS_SA_JSON`). Steps: [auth.md](auth.md#your-own-oauth-client-gs_oauth_client).

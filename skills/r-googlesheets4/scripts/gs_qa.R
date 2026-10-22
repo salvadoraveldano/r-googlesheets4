@@ -46,7 +46,7 @@ parse_num <- function(x) suppressWarnings(as.numeric(gsub("[^0-9.-]", "", as.cha
 #' @return the output path (invisibly). Stops on HTTP error.
 export_sheet_as_pdf <- function(ss, sheet_name, path,
                                 extra = "&portrait=false&size=A4&fitw=true&gridlines=false") {
-  ss_id <- as.character(ss)
+  ss_id <- as.character(googlesheets4::as_sheets_id(ss))
   gid   <- get_sheet_id(ss, sheet_name)
   url   <- sprintf("https://docs.google.com/spreadsheets/d/%s/export?format=pdf&gid=%s%s",
                    ss_id, gid, extra)
@@ -60,9 +60,10 @@ export_sheet_as_pdf <- function(ss, sheet_name, path,
   if (httr::status_code(resp) %in% c(401L, 403L)) {
     unlink(path)
     stop("PDF export was refused (HTTP ", httr::status_code(resp), ") at access level '",
-         if (exists("GS_SCOPE_LEVEL")) GS_SCOPE_LEVEL else "unknown", "'. If this level cannot export, ask ",
-         "the user to approve the narrowest fix: GS_SCOPE_LEVEL=export ",
-         "bash scripts/gs_setup.sh auth <email>, then set GS_SCOPE_LEVEL=export for the script.", call. = FALSE)
+         GS_SCOPE_LEVEL, "'. If this level cannot export, ask ",
+         "the user to approve the narrowest fix: GS_SCOPE_LEVEL=export ", GS_SETUP_SH,
+         " auth <email>, then run the script as GS_SCOPE_LEVEL=export Rscript build.R ",
+         "(or Sys.setenv it before source(\"gs_helpers.R\")).", call. = FALSE)
   }
   httr::stop_for_status(resp)
   message(sprintf("[export_sheet_as_pdf] %s -> %s (%d KB)", sheet_name, path,
@@ -82,6 +83,7 @@ first_visible_col <- function(ss_id, sheet_id, max_check = 26L) {
                   fields = "sheets(properties(sheetId),data(columnMetadata(hiddenByUser)))")
   )
   resp <- googlesheets4::request_make(req)
+  httr::stop_for_status(resp)          # a failed read must not report column A as visible
   body <- httr::content(resp, as = "parsed")
   for (s in body$sheets) {
     if (!isTRUE(s$properties$sheetId == sheet_id)) next
@@ -259,7 +261,9 @@ count_cond_rules <- function(ss_id, sheet_id) {
     params = list(spreadsheetId = ss_id,
                   fields = "sheets(properties(sheetId),conditionalFormats)")
   )
-  body <- httr::content(googlesheets4::request_make(req), as = "parsed")
+  resp <- googlesheets4::request_make(req)
+  httr::stop_for_status(resp)          # a failed read must not count as 0 rules
+  body <- httr::content(resp, as = "parsed")
   for (s in body$sheets) {
     if (isTRUE(s$properties$sheetId == sheet_id)) {
       return(length(s$conditionalFormats %||% list()))
@@ -316,7 +320,9 @@ dump_reference_tab <- function(ss_id, tab_title, range, out_path) {
     endpoint = "sheets.spreadsheets.get",
     params = list(spreadsheetId = ss_id, ranges = rng, fields = fields)
   )
-  body <- httr::content(googlesheets4::request_make(req), as = "parsed")
+  resp <- googlesheets4::request_make(req)
+  httr::stop_for_status(resp)
+  body <- httr::content(resp, as = "parsed")
   con <- file(out_path, "w"); on.exit(close(con), add = TRUE)
 
   hex <- function(c) {

@@ -82,7 +82,7 @@ Every helper shipped in `scripts/`. Source order and the few that matter most ar
 | `fmt_filter_view()`     | gs_modern.R       | Saved per-user filter view                                        |
 | `fmt_protected_range()` | gs_modern.R       | Lock a range from edits. Leave all four bounds out to protect the WHOLE sheet; only then `unprotected_ranges = list(grid_range(...))` leaves input cells open |
 | `fmt_slicer(..., filter_criteria, apply_to_pivot_tables)` | gs_modern.R | Slicer chip (filters charts/pivots). `column_index` is an absolute 0-based sheet column; `filter_criteria = list(hiddenValues = ...)` sets the start state; `apply_to_pivot_tables` is shared by all slicers on one data range |
-| `fmt_image_cell()`      | gs_modern.R       | Embed an image via `=IMAGE()` or overlay                          |
+| `fmt_image_cell()`      | gs_modern.R       | Embed an image via `=IMAGE()` (in-cell only; `OVER_CELL` stops)   |
 | `fmt_find_replace()`    | gs_modern.R       | Bulk find/replace across a sheet/spreadsheet                      |
 | `fmt_auto_resize_cols()`| gs_modern.R       | Auto-fit column widths to content (batchable)                     |
 | `write_section_header_brand()` | brand.R | `write_section_header()` in the `brand.R` palette (`alt = TRUE` for the deeper second-level colour); source `brand.R` after `gs_buffer.R` |

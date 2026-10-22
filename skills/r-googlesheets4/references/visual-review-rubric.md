@@ -12,6 +12,10 @@ qa$findings                    # tidy: tab, range, severity, issue, fix
 qa$pages                       # named list of PNG paths, one per PDF page
 ```
 
+The files go to `tools::R_user_dir("r-googlesheets4", "cache")/visual_qa/<sheet id>/`
+(the path is printed), so they still exist after `Rscript` exits. Pass
+`out_dir =` to put them elsewhere; avoid `tempdir()`, which R deletes on exit.
+
 1. Fix every **blocker** in `qa$findings` first. Each row carries a suggested
    helper call (`fix`).
 2. `Read()` each PNG in `qa$pages` and score it with the checklist below.

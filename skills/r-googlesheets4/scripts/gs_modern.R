@@ -224,18 +224,15 @@ fmt_slicer <- function(sheet_id, source_sheet_id, source_range, column_index,
 
 #' Embed an image into a cell.
 #'
-#' Two modes:
-#'   * "IN_CELL"   — uses the `=IMAGE("url")` formula. Image scales inside the
-#'                   cell. Works in regular reads / exports.
-#'   * "OVER_CELL" — uses an embedded object positioned over the cell. The
-#'                   image floats above the grid; resize freely. Requires the
-#'                   image to be reachable from Google's servers.
+#' Uses the `=IMAGE("url")` formula: the image scales inside the cell and shows
+#' in exports. `mode = "OVER_CELL"` stops: the Sheets API cannot insert a floating
+#' image, so there is nothing to position (the argument stays for compatibility).
 #'
 #' @param sheet_id  sheetId
 #' @param row,col   1-based anchor
 #' @param image_url public URL of the image
-#' @param mode      "IN_CELL" | "OVER_CELL"
-#' @param size      c(width_px, height_px) — only used for OVER_CELL
+#' @param mode      "IN_CELL" (the only supported mode)
+#' @param size      unused (kept for compatibility)
 fmt_image_cell <- function(sheet_id, row, col, image_url,
                            mode = c("IN_CELL", "OVER_CELL"),
                            size = c(200L, 200L)) {
@@ -253,20 +250,8 @@ fmt_image_cell <- function(sheet_id, row, col, image_url,
       fields = "userEnteredValue"
     ))
   } else {
-    # OVER_CELL: an embeddedObject "image" positioned at the anchor.
-    list(updateEmbeddedObjectPosition = list(
-      objectId = NULL,
-      newPosition = list(overlayPosition = list(
-        anchorCell = list(sheetId = sheet_id,
-                          rowIndex = row - 1L, columnIndex = col - 1L),
-        widthPixels  = size[1L],
-        heightPixels = size[2L]
-      )),
-      fields = "*"
-    ))
-    # NOTE: actual image upload uses the Drive API (drive_upload + image
-    # MIME type) plus an `addChart` workaround for true overlay images.
-    # For most cases, IN_CELL via =IMAGE() URL is the simpler path.
+    stop("fmt_image_cell(): mode = \"OVER_CELL\" is not supported (the Sheets API cannot ",
+         "insert a floating image); use mode = \"IN_CELL\".", call. = FALSE)
   }
 }
 
