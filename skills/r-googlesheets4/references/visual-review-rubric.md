@@ -42,7 +42,7 @@ PDF is a print-setup problem (page breaks, scale), not a column-width problem.
 2. **Column proportion.** Label columns wide enough, numeric columns consistent, no giant empty columns, gutters intentionally narrow and empty.
 3. **Row proportion.** Wrapped text fully visible, header rows taller than body rows, no cramped rows.
 4. **Alignment.** Numbers right-aligned and sharing decimals; text left-aligned; headers aligned with the data below; titles anchored in the first visible column.
-5. **Hierarchy.** The key figure is visible in 5 seconds (title, subtitle, KPIs); section headers distinct from subtotals; one accent color, semantic colors only on data.
+5. **Hierarchy.** The key figure is visible in 5 seconds (title, subtitle, KPIs); section headers distinct from subtotals; one accent color, semantic colors only on data (a finance model's blue/black/green input, formula and link text, [finance-models.md](finance-models.md) §9, counts as data).
 6. **Contrast.** Text readable on its fill (aim for 4.5:1), muted text still legible.
 7. **Whitespace.** Consistent padding, no stray blank rows or columns, no content jammed against the edge.
 8. **Charts.** Not overlapping cells, legible axis labels, series visible (an empty "Add a series" placeholder means the source range is wrong or hidden).

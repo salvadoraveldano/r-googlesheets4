@@ -209,7 +209,7 @@ Read on demand.
 | Buffered writes and styles | [buffered-writes.md](references/buffered-writes.md) |
 | Charts | [charts.md](references/charts.md) |
 | Regenerating a reference tab | [qa-pre-build-dump.md](references/qa-pre-build-dump.md) |
-| Finance-model patterns | [finance-models.md](references/finance-models.md) |
+| Finance-model patterns (colour code, Checks tab) | [finance-models.md](references/finance-models.md) |
 | Banding, pivots, slicers, protection | [modern-features.md](references/modern-features.md) |
 | Known traps | [pitfalls.md](references/pitfalls.md) |
 | API endpoint catalog | [api-endpoints.md](references/api-endpoints.md) |

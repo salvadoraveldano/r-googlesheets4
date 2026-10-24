@@ -18,6 +18,10 @@
 
 **New**
 
+- `finance-models.md` §9 and §10: the blue/black/green input, formula and link colour
+  code, and a Checks-tab recipe (tolerance cell, PASS/FAIL rows, a badge, warnings
+  that never turn it red, no plugs). `brand.R` adds `COL_INPUT_FG`, `COL_FORMULA_FG`
+  and `COL_LINK_FG`. Two evals cover them.
 - `GS_OAUTH_CLIENT=/path/client.json`: sign in and build with your own OAuth client.
   The documented `gs4_auth_configure()` route never worked, because that setting
   only lasts one R session and setup and every build run in their own `Rscript`.

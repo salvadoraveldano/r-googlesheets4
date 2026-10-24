@@ -8,6 +8,8 @@ Use these when stitching a multi-tab model where:
 - Summary sections fan out a single closing-cash anchor across multiple
   sensitivity levels.
 - The source workbook holds expense rows in pre-signed (negative) form.
+- Inputs, formulas and links need to be told apart at a glance (§9).
+- The model needs visible integrity checks and a pass/fail badge (§10).
 
 ## 1. Source / Override / Effective row pattern
 
@@ -205,3 +207,115 @@ Pattern (a) is cleaner because QA error scans never see ephemeral
 `#REF!`s. **Order in scripts:** create both tabs → constants/helpers →
 flush referenced-tab content + format → flush referring-tab content
 (refs resolve) → other sections → KPI/audit → QA.
+
+## 9. Cell colour code and model conventions
+
+Readers of a finance model expect to see at a glance which cells they
+may change. Use the font colours bankers and FP&A teams already know
+(constants in `brand.R`; the §9 and §10 snippets need it, sourced after
+`gs_helpers.R` and `gs_buffer.R`):
+
+| Text colour | Meaning | Constant |
+|---|---|---|
+| Blue | Typed input | `COL_INPUT_FG` |
+| Black | Formula using cells on the same tab | `COL_FORMULA_FG` |
+| Green | Formula that pulls from another tab | `COL_LINK_FG` |
+
+Yellow fill is optional, for the handful of key assumptions a reader is
+meant to change. Don't fill every input.
+
+- **Deciding "green" at build time:** the formula text contains `!`, or
+  it uses a named range that lives on another tab (`scenario`,
+  `check_tol` and other names have no `!`, so a grep for `!` misses
+  them).
+- **Model tabs only.** The code is font colour only and applies to
+  Assumptions and the calculation tabs. Summary and Checks are output
+  tabs and keep their own styling, so link-green never sits next to a
+  green PASS fill.
+- **No number typed into a formula row.** A number lives on Assumptions
+  in blue, or in a §1 Override row beside the row it overrides. §1
+  mapped to the code: Source = formula colour, Override = blue text on
+  yellow, Effective = formula colour.
+- **One sign convention per model.** Either costs are positive and
+  subtracted, or negative and summed. Write it in a note at the top of
+  Assumptions; §5 shows what mixing them does.
+- **Scenario switch:** one dropdown cell (`fmt_dropdown`) named
+  `scenario`, and every scenario-dependent value picks with
+  `=CHOOSE(MATCH(scenario,Assumptions!$D$4:$F$4,0),D10,E10,F10)`, where
+  row 4 holds the scenario names (`examples/showcases/saas-model.R`).
+
+```r
+batch_format(ss, list(
+  fmt_cells(asm, 6, 20, 4, 6, font_color = COL_INPUT_FG),          # Assumptions inputs
+  fmt_cells(asm, 6, 8, 4, 6, bg_color = COL_YELLOW_LIGHT),         # the few key ones
+  fmt_cells(pnl, 6, 11, 3, 14, font_color = COL_LINK_FG),          # rows pulling from Assumptions
+  fmt_cells(pnl, 12, 12, 3, 14, font_color = COL_FORMULA_FG)),     # subtotal of rows on this tab
+  strict = TRUE)
+```
+
+The templates predate this section (`templates/scenario-engine.R` marks
+overrides with yellow fill only). Where they differ, follow §9.
+
+## 10. Checks tab
+
+A Checks tab ties independent calculation paths to each other and turns
+the result into one badge that the Summary shows. It is the model's
+regression test, and anyone who opens the sheet can read it. The full
+version is in `examples/showcases/saas-model.R` (search for `## ---- Checks`).
+
+Layout: an overall status cell, a tolerance cell, then one row per
+check with `#`, Check, Model value, Expected, Difference, Status.
+Business warnings sit in a separate block below.
+
+```r
+CK <- "Checks"; ck <- get_sheet_id(ss, CK)
+CHECKS <- list(   # label, model value, expected
+  list("Balance sheet balances, month 12", "='Balance Sheet'!N40", "='Balance Sheet'!N60+'Balance Sheet'!N75"),
+  list("Revenue: sum of 12 months = annual total", "=SUM(PnL!C5:N5)", "=PnL!O5"),
+  list("No error values on model tabs", "=SUMPRODUCT(--ISERROR(PnL!A1:O80))+SUMPRODUCT(--ISERROR(Assumptions!A1:H40))", "=0"))
+WARNS <- list(    # depend on the inputs, so they never feed the badge
+  list("Cash stays positive (lowest month-end)", "=MIN(PnL!C30:N30)", "=0"))
+FIRST <- 7L; LAST <- FIRST + length(CHECKS) - 1L
+W_FIRST <- LAST + 2L; W_LAST <- W_FIRST + length(WARNS) - 1L
+
+batch_format(ss, list(
+  fmt_named_range(ck, "model_status", 4, 4, 4, 4),
+  fmt_named_range(ck, "check_tol",    4, 4, 7, 7),
+  fmt_cond_text_equals(ck, FIRST, W_LAST, 7, 7, "PASS", bg_color = COL_GREEN_LIGHT, bold = TRUE),
+  fmt_cond_text_equals(ck, FIRST, W_LAST, 7, 7, "FAIL", bg_color = COL_RED_LIGHT, bold = TRUE),
+  fmt_cond_text_equals(ck, FIRST, W_LAST, 7, 7, "WARN", bg_color = COL_WARNING_SOFT, bold = TRUE)),
+  strict = TRUE)
+
+write_cell(ss, CK, 4, 3, "Overall status")
+write_cell(ss, CK, 4, 4, sprintf('=IF(COUNTIF(G%d:G%d,"FAIL")=0,"Model ties: OK","Model ties: CHECK")', FIRST, LAST))
+write_cell(ss, CK, 4, 6, "Tolerance"); write_cell(ss, CK, 4, 7, 0.01)
+for (j in 1:6) write_cell(ss, CK, 6, 1L + j, c("#", "Check", "Model value", "Expected", "Difference", "Status")[j])
+ck_row <- function(rw, i, x, warn = FALSE) {
+  write_cell(ss, CK, rw, 2, i); write_cell(ss, CK, rw, 3, x[[1]])
+  write_cell(ss, CK, rw, 4, x[[2]]); write_cell(ss, CK, rw, 5, x[[3]])
+  write_cell(ss, CK, rw, 6, if (warn) sprintf("=MIN(0,ROUND(D%d-E%d,4))", rw, rw)   # only a shortfall counts
+                            else sprintf('=IF((D%1$d="")<>(E%1$d=""),1,ROUND(D%1$d-E%1$d,4))', rw))   # blank vs number is a difference
+  bad <- if (warn) "WARN" else "FAIL"
+  write_cell(ss, CK, rw, 7, sprintf('=IFERROR(IF(ABS(F%d)<=check_tol,"PASS","%s"),"%s")', rw, bad, bad))
+}
+for (i in seq_along(CHECKS)) ck_row(FIRST + i - 1L, i, CHECKS[[i]])
+for (i in seq_along(WARNS))  ck_row(W_FIRST + i - 1L, i, WARNS[[i]], warn = TRUE)
+flush_writes(ss, strict = TRUE)
+# Summary: write_cell(ss, "Summary", 5, 11, "=model_status")
+```
+
+What to check:
+
+- Totals that tie across tabs, and any stitched total against its
+  canonical figure (§3).
+- The selected scenario's outputs equal the Forecast's.
+- The balance sheet balances in every period that matters.
+- No error values on any model tab (one `SUMPRODUCT(--ISERROR(...))` row).
+
+Warnings such as cash going negative are business results, not model
+errors. A reader who tries a harsh scenario should see WARN, while the
+badge stays "Model ties: OK".
+
+**Don't plug.** When a check fails, find the cause and report it. Never
+type a number, or add a balancing row, to turn a FAIL into a PASS. If
+the cause can't be found, leave the badge on CHECK and say so.

@@ -32,6 +32,11 @@ COL_NEGATIVE      <- hex_to_color("E5484D")
 COL_WARNING       <- hex_to_color("F5A524")
 COL_WARNING_SOFT  <- hex_to_color("FEF4E6")
 
+# Finance cell colour code (finance-models.md §9): text colour only.
+COL_INPUT_FG   <- hex_to_color("0000FF")  # typed inputs
+COL_FORMULA_FG <- hex_to_color("000000")  # formulas on the same tab
+COL_LINK_FG    <- hex_to_color("008000")  # formulas pulling from another tab
+
 # ── Style presets ------------------------------------------------------------
 STYLE_BRAND_TITLE <- modifyList(STYLE_TITLE, list(
   font_family = BRAND_FONT, font_size = 26, bold = TRUE, font_color = COL_BRAND
