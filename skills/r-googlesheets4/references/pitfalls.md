@@ -8,7 +8,7 @@ to deeper treatment in topic refs.
 | Colors are hex | NO — Sheets uses `list(red=0-1, green=0-1, blue=0-1)`. Use `hex_to_color()`. |
 | Indices are 1-based | NO — grid coordinates are **0-based** with exclusive upper bound. Always use `grid_range()`. |
 | `reformat = TRUE` preserves formatting | NO — it **clears** existing formatting. Use `reformat = FALSE` when updating values in pre-styled sheets. See [writing.md](writing.md). |
-| `[Red]` in number format | Not supported. Use `fmt_cond_negative()` for red-text-on-negative, or Sheets-specific `[Color53]`. See [number-formats.md](number-formats.md). |
+| `[Red]` in number format | Works, but only named colours (`[Red]`, `[ColorN]`), never a hex. For the design system's exact red use `fmt_cond_negative()`. See [number-formats.md](number-formats.md). |
 | Formula locale | Sheets always uses commas as argument separator regardless of locale. Excel-EU's `;` is wrong. |
 | Auth token expired / revoked, or "No saved Google login" from `gs_connect()` | Run once: `bash scripts/gs_setup.sh auth <email>` (opens the Google sign-in page; see [auth.md](auth.md)). For unattended cron, set `GS_SA_JSON` to a service-account key. |
 | Rate limit (429) | `request_make()` retries automatically via gargle. Batch into one `batch_format()` call. Add `Sys.sleep(3)` between iterations. See [rate-limits-and-batching.md](rate-limits-and-batching.md). |

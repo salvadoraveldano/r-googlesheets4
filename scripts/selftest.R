@@ -308,7 +308,7 @@ area_cells <- function() {
   write_cell(ss, t, 3, 1, "a much longer label that forces the column wider than its default width")
   write_block(ss, t, 1, 5, matrix(c(1234.5, 0.256, 2.5, 45000), ncol = 1))      # E1:E4
   write_cell(ss, t, 10, 7, "foo and foo")                                         # G10
-  hdr <- write_section_header(ss, t, s, 8, "SECTION", start_col = 8, end_col = 10, bg_color = COL_BRAND)
+  hdr <- write_section_header(ss, t, s, 8, "SECTION", start_col = 8, end_col = 10, bg_color = COL_BRAND, fg_color = COL_WHITE)
   hdr_alt <- write_section_header_brand(ss, t, s, 9, "ALT", start_col = 8, end_col = 10, alt = TRUE)
   flush_writes(ss, strict = TRUE)
 
@@ -364,12 +364,14 @@ area_cells <- function() {
   check("apply_style layering: bold + white kept, size 16 + italic applied, brand fill",
         isTRUE(tf(8, 8)$bold) && tf(8, 8)$fontSize == 16 && isTRUE(tf(8, 8)$italic) &&
           identical(hex(tf(8, 8)$foregroundColorStyle$rgbColor), "#FFFFFF") &&
-          identical(hex(cell_at(rows, 8, 8)$userEnteredFormat$backgroundColor), "#2457C5"))
+          identical(hex(cell_at(rows, 8, 8)$userEnteredFormat$backgroundColor), color_to_hex(COL_BRAND)))
   check("write_section_header: merge H8:J8 and a 30px row",
         any(vapply(sh$merges, function(m) identical(c(m$startRowIndex, m$endRowIndex, m$startColumnIndex, m$endColumnIndex), c(7L, 8L, 7L, 10L)), NA)) &&
           d$rowMetadata[[8]]$pixelSize == 30)
-  check("write_section_header_brand(alt = TRUE): the deep brand fill, white bold label, merged",
-        identical(hex(cell_at(rows, 9, 8)$userEnteredFormat$backgroundColor), color_to_hex(COL_BRAND_DEEP)) &&
+  check("write_section_header_brand(alt = TRUE): white fill, ink bold label, ink rule above, merged",
+        identical(hex(cell_at(rows, 9, 8)$userEnteredFormat$backgroundColor), "#FFFFFF") &&
+          identical(hex(tf(9, 8)$foregroundColorStyle$rgbColor), color_to_hex(COL_INK)) &&
+          identical(cell_at(rows, 9, 8)$userEnteredFormat$borders$top$style, "SOLID") &&
           isTRUE(tf(9, 8)$bold) && identical(cell_at(rows, 9, 8)$formattedValue, "ALT") && length(sh$merges) == 3L)
   check("link_cells_req: the link survives fmt_cells(bold, size)",
         identical(tf(6, 1)$link$uri, "https://example.com/x") && isTRUE(tf(6, 1)$bold) && tf(6, 1)$fontSize == 12)
@@ -595,8 +597,8 @@ area_charts <- function() {
   st <- subtotals("C8 waterfall inserted subtotal")
   check("waterfall subtotal_is_data = FALSE: an inserted subtotal after row 2, labelled",
         length(st) == 1L && eq(st[[1]]$subtotalIndex, 2) && !isTRUE(st[[1]]$dataIsSubtotal) && identical(st[[1]]$label, "Net after refunds"))
-  check("pie has no hole; donut has pieHole 0.55", is.null(ch("C9 pie")$spec$pieChart$pieHole) &&
-          isTRUE(all.equal(ch("C10 donut")$spec$pieChart$pieHole, 0.55)))
+  check("pie has no hole; donut has pieHole 0.7 (the default)", is.null(ch("C9 pie")$spec$pieChart$pieHole) &&
+          isTRUE(all.equal(ch("C10 donut")$spec$pieChart$pieHole, 0.7)))
   check("plain charts carry no border, no background and no offset",
         all(vapply(c("C2 stacked column", "C9 pie", "C7 waterfall totals"), function(n)
           is.null(ch(n)$border) && is.null(ch(n)$spec$backgroundColorStyle) && all(off(n) == 0), NA)))

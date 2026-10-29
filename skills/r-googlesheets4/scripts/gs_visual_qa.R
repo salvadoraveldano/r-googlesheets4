@@ -27,12 +27,7 @@ if (!exists("export_sheet_as_pdf")) stop("Source gs_qa.R before gs_visual_qa.R")
 .nz <- function(x, d) if (is.null(x)) d else x
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
-# Relative luminance / contrast ratio (WCAG) from Sheets color lists (0-1 floats)
-.lum <- function(col) {
-  ch <- function(v) { v <- .nz(v, 0); if (v <= 0.03928) v / 12.92 else ((v + 0.055) / 1.055)^2.4 }
-  0.2126 * ch(col$red) + 0.7152 * ch(col$green) + 0.0722 * ch(col$blue)
-}
-.contrast <- function(a, b) { la <- .lum(a); lb <- .lum(b); (max(la, lb) + 0.05) / (min(la, lb) + 0.05) }
+# .lum() and .contrast() (WCAG) come from gs_helpers.R.
 
 # Rough rendered width in px for Arial-like fonts. Deliberately a bit generous:
 # a false alarm costs a glance, a missed truncation costs a rebuild.

@@ -1,74 +1,47 @@
 # =============================================================================
-# brand.R — customizable brand preset (opt-in)
+# brand.R — your accent colour and font (optional)
 # =============================================================================
 #
-# One editable block of colors/fonts plus style presets built on the generic
-# defaults in gs_buffer.R. Change the palette below to match your organization;
-# everything else follows.
-#
-# Source AFTER `gs_helpers.R` and `gs_buffer.R` — values here override the
-# generic defaults.
+# The default look ("Ledger", references/design-principles.md) already loads
+# with gs_helpers.R. Source this file only to change the accent or the font:
+# edit the two values below and everything that follows the accent (chart
+# series, the theme, the control box, colour scales, waterfall totals) moves
+# with it. Inputs stay blue on purpose, so "blue = you can type here" holds.
 #
 #   source("scripts/gs_helpers.R")
 #   source("scripts/gs_buffer.R")
 #   source("scripts/brand.R")
-#   apply_style(sid, ..., STYLE_BRAND_SECTION_HEADER)
+#   batch_format(ss, list(do.call(fmt_theme_colors, THEME_DEFAULT)), strict = TRUE)
 # =============================================================================
 
-if (!exists("hex_to_color")) stop("Source gs_helpers.R before brand.R")
-if (!exists("STYLE_BODY"))   stop("Source gs_buffer.R before brand.R")
+if (!exists("ds_tokens"))  stop("Source gs_helpers.R before brand.R")
+if (!exists("STYLE_BODY")) stop("Source gs_buffer.R before brand.R")
 
-# ── Palette: edit these ------------------------------------------------------
-BRAND_FONT <- "Arial"  # web-safe, portable to PDF export
+# ── Edit these -----------------------------------------------------------------
+ACCENT_HEX <- "2457C5"   # one brand colour, at least 3:1 on white (ds_tokens() checks)
+BRAND_FONT <- "Roboto"   # renders in the grid, charts and PDF; "Arial" also works
 
-COL_BRAND        <- hex_to_color("2457C5")  # primary: titles, section headers
-COL_BRAND_DEEP   <- hex_to_color("163A85")  # second-level banner
-COL_BRAND_SUBTLE <- hex_to_color("E9EFFB")  # subtotal / soft-fill background
-COL_INK          <- hex_to_color("12161C")  # near-black text
+list2env(ds_tokens(ACCENT_HEX, BRAND_FONT), environment())
 
-# Semantic colors: reserve for data (variance, status), never decoration.
-COL_POSITIVE      <- hex_to_color("18A957")
-COL_NEGATIVE      <- hex_to_color("E5484D")
-COL_WARNING       <- hex_to_color("F5A524")
-COL_WARNING_SOFT  <- hex_to_color("FEF4E6")
+# ── Old names, kept so existing scripts run ------------------------------------
+STYLE_BRAND_TITLE              <- STYLE_TITLE
+STYLE_BRAND_SECTION_HEADER     <- STYLE_SECTION_HEADER
+STYLE_BRAND_SECTION_HEADER_ALT <- STYLE_SECTION_HEADER
+STYLE_BRAND_SUBTOTAL           <- STYLE_SUBTOTAL
+STYLE_BRAND_EXPENSE_ROW        <- list(font_color = COL_INK)   # the sign carries the meaning, not red
+STYLE_BRAND_INPUT_LIVE         <- STYLE_INPUT
+STYLE_BRAND_HIGHLIGHT_COL      <- list(bg_color = COL_RAISED, bold = TRUE, halign = "RIGHT")
 
-# Finance cell colour code (finance-models.md §9): text colour only.
-COL_INPUT_FG   <- hex_to_color("0000FF")  # typed inputs
-COL_FORMULA_FG <- hex_to_color("000000")  # formulas on the same tab
-COL_LINK_FG    <- hex_to_color("008000")  # formulas pulling from another tab
-
-# ── Style presets ------------------------------------------------------------
-STYLE_BRAND_TITLE <- modifyList(STYLE_TITLE, list(
-  font_family = BRAND_FONT, font_size = 26, bold = TRUE, font_color = COL_BRAND
-))
-
-STYLE_BRAND_SECTION_HEADER <- modifyList(STYLE_SECTION_HEADER, list(
-  bg_color = COL_BRAND, font_color = COL_WHITE
-))
-
-STYLE_BRAND_SECTION_HEADER_ALT <- modifyList(STYLE_SECTION_HEADER, list(
-  bg_color = COL_BRAND_DEEP, font_color = COL_WHITE
-))
-
-STYLE_BRAND_SUBTOTAL    <- list(bold = TRUE, bg_color = COL_BRAND_SUBTLE)
-STYLE_BRAND_EXPENSE_ROW <- list(font_color = COL_NEGATIVE, bold = TRUE)
-STYLE_BRAND_INPUT_LIVE  <- list(font_color = COL_BRAND, italic = TRUE)
-STYLE_BRAND_HIGHLIGHT_COL <- list(
-  bg_color = COL_WARNING_SOFT, bold = TRUE, halign = "RIGHT"
-)
-
-# ── Number format with red negatives ----------------------------------------
-# Number formats can only color negatives with the legacy palette (`[Red]`,
-# `[ColorN]`), not arbitrary hex. For an exact brand red, color the cells with
-# `fmt_cond_negative(..., color = COL_NEGATIVE)` instead.
+# Negatives in the number format's own red. `[Red]` is one of the colours a
+# format may name (Black, Blue, Cyan, Green, Magenta, Red, White, Yellow or
+# [ColorN]); for an exact hex, colour the cells with fmt_cond_negative().
 NUMFMT_CURRENCY_NEG <- list(type = "CURRENCY", pattern = "$#,##0;[Red]-$#,##0")
 
-# ── Section-header convenience wrapper --------------------------------------
+#' write_section_header() under its old brand name; `alt` is accepted and
+#' ignored (there is one section style now).
 write_section_header_brand <- function(ss, sheet_name, sheet_id, row, label,
                                        start_col = 3L, end_col = 8L,
                                        alt = FALSE, ...) {
-  bg <- if (isTRUE(alt)) COL_BRAND_DEEP else COL_BRAND
   write_section_header(ss, sheet_name, sheet_id, row, label,
-                       start_col = start_col, end_col = end_col,
-                       bg_color = bg, ...)
+                       start_col = start_col, end_col = end_col, ...)
 }

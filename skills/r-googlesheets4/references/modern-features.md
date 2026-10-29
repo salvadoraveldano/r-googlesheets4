@@ -67,6 +67,12 @@ you leave it out).
 `COUNT_UNIQUE` / `MAX` / `MIN` / `MEDIAN` / `PRODUCT` / `STDEV` /
 `STDEVP` / `VAR` / `VARP` / `CUSTOM`.
 
+⚠️ **A pivot brings its own grey header and Grand Total fills**, about 1.6:1
+under the design system's text, which `audit_layout()` flags. After the pivot
+lands, reset them: `fmt_cells(sid, r1, r2, c1, c2, bg_color = COL_WHITE)` over
+the pivot's header and total rows, then style them with `fmt_section()` /
+`fmt_table_body()`.
+
 ⚠️ **Source data must be committed first.** If the pivot's
 `source_range` doesn't have data yet, the pivot renders empty. Order:
 flush data → wait briefly → batchUpdate the pivot.

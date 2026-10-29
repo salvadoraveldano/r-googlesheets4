@@ -87,18 +87,7 @@ f_named <- function(expr, ...) {
   expr
 }
 
-#' API colour list(red, green, blue) (0-1 floats, as `hex_to_color()` makes) →
-#' "#RRGGBB". The reverse of `hex_to_color()`, for places that want hex text,
-#' such as a SPARKLINE `color` option. A channel the API left out counts as 0
-#' (it omits zeros), so a colour read back from a sheet works too.
-#' @examples
-#' color_to_hex(hex_to_color("#2457C5"))
-#' # → "#2457C5"
-color_to_hex <- function(color) {
-  if (!is.list(color)) stop("color_to_hex(): `color` must be list(red, green, blue)", call. = FALSE)
-  ch <- function(x) if (is.null(x)) 0L else as.integer(round(x * 255))
-  sprintf("#%02X%02X%02X", ch(color$red), ch(color$green), ch(color$blue))
-}
+# color_to_hex() lives in gs_helpers.R (the design tokens use it).
 
 #' SPARKLINE formula. Sheets-only feature (no Excel equivalent).
 #'

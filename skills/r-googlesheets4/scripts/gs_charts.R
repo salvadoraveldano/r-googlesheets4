@@ -156,8 +156,18 @@ if (!exists("grid_range")) stop("Source gs_helpers.R before gs_charts.R")
 #'                           type = "LINE"|"COLUMN"|"AREA" (for COMBO),
 #'                           line = list(width = 3, type = "MEDIUM_DASHED"),
 #'                           point = list(shape = "CIRCLE", size = 7),
-#'                           label = list(type = "DATA", placement = "ABOVE"))
+#'                           label = list(type = "DATA", placement = "ABOVE"),
+#'                           override = list(list(index = 0L, color = COL_NEGATIVE)))
 #'                      Only `range` is required. `color` is RGB; alpha is ignored.
+#'                      Leave `color` out to take the theme colour (THEME_DEFAULT:
+#'                      the accent first, then greys). `override` recolours single
+#'                      points (0-based, after the header), e.g. the bars over a
+#'                      limit. The indices are fixed when the chart is built:
+#'                      on a series that a picker re-sorts, use two stacked
+#'                      series instead (within limit / over limit, each a
+#'                      formula). A dashed limit line next to bars needs
+#'                      `chart_type = "COMBO"` with `type = "COLUMN"` on the bars:
+#'                      a COLUMN chart rejects `line` on a LINE series (HTTP 400).
 #'                      `point` takes `shape`, not `type`.
 #' @param header_count  1L when first cell of each range is the legend label
 #' @param stacked_type  NULL | "STACKED" | "PERCENT_STACKED"
@@ -224,6 +234,9 @@ fmt_chart_basic <- function(sheet_id, title, chart_type,
     if (!is.null(s$line)) out$lineStyle <- s$line
     if (!is.null(s$point)) out$pointStyle <- s$point
     if (!is.null(s$label)) out$dataLabel <- s$label
+    if (!is.null(s$override))   # recolour single points: list(list(index = 0L, color = COL_NEGATIVE), ...)
+      out$styleOverrides <- lapply(s$override, function(o)
+        list(index = as.integer(o$index), colorStyle = list(rgbColor = .style_color(o$color, "override color"))))
     out
   })
 
@@ -277,9 +290,9 @@ fmt_chart_bar <- function(sheet_id, title, domain_range, series_list, ...) {
 #' @param title        chart title
 #' @param domain_range c(...) 1-based — labels (the X-axis category column)
 #' @param data_range   c(...) 1-based — values
-#' @param positive_color list color
-#' @param negative_color list color
-#' @param subtotal_color list color
+#' @param positive_color list color (default COL_POSITIVE)
+#' @param negative_color list color (default COL_NEGATIVE)
+#' @param subtotal_color list color (default COL_ACCENT, so a brand swap carries)
 #' @param connector_type "DOTTED" | "DASHED" | "SOLID" — connector lines
 #' @param subtotal_indices integer vector — which 0-based positions are subtotals
 #' @param anchor       c(row, col)
@@ -299,9 +312,9 @@ fmt_chart_bar <- function(sheet_id, title, domain_range, series_list, ...) {
 #' Waterfall charts cannot carry axis titles (the API has none for them).
 fmt_chart_waterfall <- function(sheet_id, title,
                                 domain_range, data_range,
-                                positive_color = list(red = 0.13, green = 0.55, blue = 0.13),
-                                negative_color = list(red = 0.78, green = 0.16, blue = 0.16),
-                                subtotal_color = list(red = 0.30, green = 0.30, blue = 0.30),
+                                positive_color = COL_POSITIVE,
+                                negative_color = COL_NEGATIVE,
+                                subtotal_color = COL_ACCENT,
                                 connector_type = "DOTTED",
                                 subtotal_indices = integer(0L),
                                 anchor = c(1L, 1L),
@@ -364,14 +377,14 @@ fmt_chart_waterfall <- function(sheet_id, title,
 #' @param data_range   c(...) 1-based — slice values, same length as the labels.
 #'                     A header cell is NOT used; start both ranges on data rows.
 #' @param donut        TRUE = doughnut (hole of size `pie_hole`)
-#' @param pie_hole     hole radius as a fraction, 0-1 (default 0.55); used when `donut`
+#' @param pie_hole     hole radius as a fraction, 0-1 (default 0.7, a thin ring); used when `donut`
 #' @param legend       "RIGHT_LEGEND" (default) | "BOTTOM_LEGEND" | "LEFT_LEGEND" |
 #'                     "TOP_LEGEND" | "NO_LEGEND" | "LABELED_LEGEND"
 #' @param anchor,size,anchor_sheet_id  as in `fmt_chart_basic()`
 #' @param offset_x,offset_y,style  as in `fmt_chart_basic()` (`axis_font_size` has
 #'                     no effect: a pie has no axes)
 fmt_chart_pie <- function(sheet_id, title, domain_range, data_range,
-                          donut = FALSE, pie_hole = 0.55,
+                          donut = FALSE, pie_hole = 0.7,
                           legend = "RIGHT_LEGEND",
                           anchor = c(1L, 1L),
                           size = c(450L, 300L),

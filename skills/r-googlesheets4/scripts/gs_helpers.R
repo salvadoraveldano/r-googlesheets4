@@ -93,28 +93,186 @@ hex_to_color <- function(hex) {
   )
 }
 
-# Generic color constants. Brand-specific colors live in scripts/brand.R.
-COL_BLACK        <- list(red = 0, green = 0, blue = 0)
-COL_WHITE        <- list(red = 1, green = 1, blue = 1)
-COL_LIGHT_GRAY   <- hex_to_color("F5F5F5")
-COL_GRAY_TEXT    <- hex_to_color("BDBDBD")
-COL_MUTED_TEXT   <- hex_to_color("757575")
-COL_RED_TEXT     <- hex_to_color("C62828")
-COL_GREEN_LIGHT  <- hex_to_color("C8E6C9")
-COL_BLUE_LIGHT   <- hex_to_color("E3F2FD")
-COL_YELLOW_LIGHT <- hex_to_color("FFF9C4")
-COL_RED_LIGHT    <- hex_to_color("FFCDD2")
+#' API colour list(red, green, blue) (0-1 floats, as `hex_to_color()` makes) →
+#' "#RRGGBB". The reverse of `hex_to_color()`, for places that want hex text,
+#' such as a SPARKLINE `color` option. A channel the API left out counts as 0
+#' (it omits zeros), so a colour read back from a sheet works too.
+#' @examples
+#' color_to_hex(hex_to_color("#2457C5"))
+#' # → "#2457C5"
+color_to_hex <- function(color) {
+  if (!is.list(color)) stop("color_to_hex(): `color` must be list(red, green, blue)", call. = FALSE)
+  ch <- function(x) if (is.null(x)) 0L else as.integer(round(x * 255))
+  sprintf("#%02X%02X%02X", ch(color$red), ch(color$green), ch(color$blue))
+}
+
+# ── Design tokens: the "Ledger" default look ---------------------------------
+# Ink on white with one blue pen: structure comes from rules and type size, not
+# fills. Blue means "you can type here" or "the main series"; red, green and
+# amber mean status only. Every text/fill pair below is at least 4.5:1 (WCAG).
+# Separators follow the Salt design system's black-at-opacity steps, flattened
+# to solid hex because Sheets has no transparency. Full guide:
+# references/design-principles.md. Change the accent in scripts/brand.R.
+
+# WCAG relative luminance and contrast ratio of Sheets colour lists (0-1 floats).
+.lum <- function(col) {
+  ch <- function(v) { v <- v %||% 0; if (v <= 0.03928) v / 12.92 else ((v + 0.055) / 1.055)^2.4 }
+  0.2126 * ch(col$red) + 0.7152 * ch(col$green) + 0.0722 * ch(col$blue)
+}
+.contrast <- function(a, b) { la <- .lum(a); lb <- .lum(b); (max(la, lb) + 0.05) / (min(la, lb) + 0.05) }
+
+COL_BLACK  <- list(red = 0, green = 0, blue = 0)
+COL_WHITE  <- list(red = 1, green = 1, blue = 1)
+
+# Surfaces
+COL_GROUND  <- COL_WHITE               # the page
+COL_SURFACE <- hex_to_color("F5F5F5")  # total column, notes well, disabled cells
+COL_RAISED  <- hex_to_color("EFEFEF")  # the selected row or column
+
+# Separators (always SOLID, the thinnest border style)
+COL_RULE_INK   <- hex_to_color("141414")  # above each block, above totals, DOUBLE under totals
+COL_SEP_STRONG <- hex_to_color("999999")  # under table headers, above subtotals (Salt 40%)
+COL_SEP_MEDIUM <- hex_to_color("CCCCCC")  # boxes that are not inputs (Salt 20%)
+COL_SEP_SUBTLE <- hex_to_color("E6E6E6")  # body row rules (Salt 10%)
+
+BORDER_INK    <- list(style = "SOLID",  color = COL_RULE_INK)
+BORDER_STRONG <- list(style = "SOLID",  color = COL_SEP_STRONG)
+BORDER_SUBTLE <- list(style = "SOLID",  color = COL_SEP_SUBTLE)
+BORDER_DOUBLE <- list(style = "DOUBLE", color = COL_RULE_INK)
+
+# Text, three tiers: 18.4, 9.3 and 5.7 to 1 on white; disabled = muted + italic
+COL_INK           <- hex_to_color("141414")
+COL_TEXT_2        <- hex_to_color("474747")
+COL_TEXT_3        <- hex_to_color("666666")
+COL_TEXT_DISABLED <- COL_TEXT_3
+
+# Inputs: one look everywhere. Fixed, NOT derived from the accent, so after a
+# brand swap "blue = you can type here" still holds.
+COL_INPUT_FG <- hex_to_color("2457C5")   # 5.6:1 on its fill
+COL_INPUT_BG <- hex_to_color("E9EEF9")
+
+# Finance colour code (references/finance-models.md §9): text colour only.
+COL_FORMULA_FG <- COL_INK                # same-tab formula: black
+COL_LINK_FG    <- hex_to_color("1D7343") # formula pulling from another tab: green, 5.9:1
+
+# Status: `fill` + `ink` for chips (pale tint, dark text of the same hue);
+# `mark` for delta text, bars and lines. Inks pass 6.5:1 on their fill; the
+# positive, negative and info marks pass 4.5:1 as text on white.
+STATUS <- list(
+  positive = list(fill = hex_to_color("E3F2E8"), ink = hex_to_color("17603A"), mark = hex_to_color("1F7A47")),
+  negative = list(fill = hex_to_color("FBE9E7"), ink = hex_to_color("9B2420"), mark = hex_to_color("BB2D27")),
+  warning  = list(fill = hex_to_color("FCF0D9"), ink = hex_to_color("7A4A00"), mark = hex_to_color("B8740A")),
+  info     = list(fill = hex_to_color("E3F1F3"), ink = hex_to_color("0D5562"), mark = hex_to_color("16788A")),
+  neutral  = list(fill = hex_to_color("EFEFEF"), ink = hex_to_color("3D3D3D"), mark = hex_to_color("8C8C8C"))
+)
+COL_POSITIVE     <- STATUS$positive$mark
+COL_NEGATIVE     <- STATUS$negative$mark
+COL_WARNING      <- STATUS$warning$mark   # non-text only (3.8:1): bars, lines, tab colour
+COL_WARNING_SOFT <- STATUS$warning$fill
+COL_INFO         <- STATUS$info$mark
+
+# Conditional-format scales, in fmt_cond_color_scale()'s argument shape. Keep the
+# text inside scaled cells in ink.
+SCALE_DIV  <- list(min_color = hex_to_color("BDCDEE"), mid_color = COL_WHITE,          # good low, bad high
+                   max_color = hex_to_color("EECAC9"))
+SCALE_HEAT <- list(min_color = COL_WHITE, mid_color = STATUS$warning$fill,             # higher is worse
+                   max_color = hex_to_color("EECAC9"))
+
+# Old names, kept so existing scripts run; they now point at the new look.
+COL_LIGHT_GRAY   <- COL_SURFACE
+COL_GRAY_TEXT    <- COL_TEXT_3              # was BDBDBD (1.7:1, failed the audit)
+COL_MUTED_TEXT   <- COL_TEXT_3
+COL_RED_TEXT     <- STATUS$negative$mark
+COL_GREEN_LIGHT  <- STATUS$positive$fill
+COL_BLUE_LIGHT   <- hex_to_color("C8D5F0")  # stronger than the input fill on purpose
+COL_YELLOW_LIGHT <- STATUS$warning$fill
+COL_RED_LIGHT    <- STATUS$negative$fill
+COL_BRAND_SUBTLE <- COL_SURFACE             # soft fill; grey so it never reads as an input
+
+#' Everything that follows the accent colour, as a named list.
+#'
+#' `gs_helpers.R` loads the default (`2457C5`, Roboto) into the session;
+#' `brand.R` reloads it with your colour: `list2env(ds_tokens("7B3F98"), environment())`.
+#' The ladder is mixed toward white (100, 200, 400) or black (700, 800), then
+#' darkened in 2% steps until each step passes its contrast target, so any
+#' accent stays readable. Stops if the accent is under 3:1 on white; warns when
+#' its hue sits within 25 degrees of a status hue (it would read as status).
+#'
+#' @param accent  6-digit hex, the brand colour
+#' @param font    font family for the theme and charts. Roboto renders in the
+#'                grid, charts and PDF export and has equal-width digits.
+#' @return list: COL_ACCENT, COL_ACCENT_100/_200/_400/_700/_800, COL_BRAND,
+#'   COL_BRAND_DEEP, BRAND_FONT, CHART_PALETTE (6 hex), SCALE_SEQ, THEME_DEFAULT
+#'   (arguments for fmt_theme_colors()), STYLE_CHART (a chart `style` list).
+ds_tokens <- function(accent = "2457C5", font = "Roboto") {
+  if (!(is.character(accent) && length(accent) == 1L && grepl("^#?[0-9A-Fa-f]{6}$", accent)))
+    stop("ds_tokens(): `accent` must be a 6-digit hex colour such as \"2457C5\"", call. = FALSE)
+  if (!(is.character(font) && length(font) == 1L && nzchar(font)))
+    stop("ds_tokens(): `font` must be one font family name, e.g. \"Roboto\"", call. = FALSE)
+  base <- hex_to_color(accent)
+  W <- COL_WHITE
+  mix <- function(a, b, t) lapply(setNames(nm = c("red", "green", "blue")),
+                                  function(k) round(255 * (t * a[[k]] + (1 - t) * b[[k]])) / 255)
+  darken <- function(col, ok) { k <- 0; while (!ok(col) && k < 50) { col <- mix(col, COL_BLACK, 0.98); k <- k + 1 }; col }
+  if (.contrast(base, W) < 3)
+    stop(sprintf("ds_tokens(): accent %s is %.2f:1 on white; it needs at least 3:1 to work as a chart and control colour. Pick a darker colour.",
+                 accent, .contrast(base, W)), call. = FALSE)
+  a100 <- mix(base, W, 0.10)
+  a200 <- mix(base, W, 0.25)
+  a400 <- darken(mix(base, W, 0.62), function(c) .contrast(c, W) >= 3)
+  a600 <- darken(base, function(c) .contrast(c, a100) >= 4.5)
+  a700 <- darken(mix(base, COL_BLACK, 0.78), function(c) .contrast(c, a100) >= 7)
+  a800 <- mix(base, COL_BLACK, 0.55)
+
+  # Hue check (HSL): an accent next to a status hue reads as status.
+  rgb <- unlist(base[c("red", "green", "blue")]); mx <- max(rgb); mn <- min(rgb); d <- mx - mn
+  l <- (mx + mn) / 2; s <- if (d == 0) 0 else d / (1 - abs(2 * l - 1))
+  h <- if (d == 0) NA else 60 * switch(which.max(rgb),
+    ((rgb[2] - rgb[3]) / d) %% 6, (rgb[3] - rgb[1]) / d + 2, (rgb[1] - rgb[2]) / d + 4)
+  status_hue <- c(positive = 146, negative = 2, warning = 37, info = 189)
+  if (!is.na(h) && s >= 0.25) {
+    gap <- abs(((h - status_hue) + 180) %% 360 - 180)
+    if (any(gap < 25))
+      warning(sprintf("ds_tokens(): accent %s (hue %.0f) is close to the %s status colour, so readers may take it for status. Consider another hue.",
+                      accent, h, names(status_hue)[which.min(gap)]), call. = FALSE)
+  }
+
+  hex <- function(c) sub("^#", "", color_to_hex(c))
+  palette <- c(hex(a600), "949494", hex(a800), hex(a400), "3D3D3D", "767676")
+  list(
+    COL_ACCENT = a600, COL_ACCENT_100 = a100, COL_ACCENT_200 = a200, COL_ACCENT_400 = a400,
+    COL_ACCENT_700 = a700, COL_ACCENT_800 = a800,
+    COL_BRAND = a600, COL_BRAND_DEEP = a700,
+    BRAND_FONT = font,
+    CHART_PALETTE = palette,
+    SCALE_SEQ = list(min_color = W, mid_color = mix(a600, W, 0.18), max_color = mix(a600, W, 0.40)),
+    THEME_DEFAULT = list(accent1 = palette[1], accent2 = palette[2], accent3 = palette[3],
+                         accent4 = palette[4], accent5 = palette[5], accent6 = palette[6],
+                         text = "141414", background = "FFFFFF", link = hex(a700), font_family = font),
+    STYLE_CHART = list(font = font, title_size = 11, title_bold = TRUE, title_color = "141414",
+                       title_position = "LEFT", background = "FFFFFF", border = "FFFFFF",
+                       axis_font_size = 9)
+  )
+}
+
+
+list2env(ds_tokens(), environment())
 
 # ── Number-format constants ------------------------------------------------
 
 NUMFMT_CURRENCY   <- list(type = "NUMBER",  pattern = '$#,##0;($#,##0);"-"')
 NUMFMT_CURRENCY_K <- list(type = "NUMBER",  pattern = '$#,##0,"K";($#,##0,"K");"-"')
 NUMFMT_CURRENCY_M <- list(type = "NUMBER",  pattern = '$#,##0,,"M";($#,##0,,"M");"-"')
+NUMFMT_CURRENCY_M1 <- list(type = "NUMBER", pattern = '$#,##0.0,,"M";($#,##0.0,,"M");"-"')  # _M rounds $3.5M to "$4M"
 NUMFMT_PCT        <- list(type = "PERCENT", pattern = "0.0%")
 NUMFMT_PCT_WHOLE  <- list(type = "PERCENT", pattern = "0%")
 NUMFMT_ACCOUNTING <- list(type = "NUMBER",  pattern = '_($* #,##0_);_($* (#,##0);_($* "-"_)')
 NUMFMT_INT        <- list(type = "NUMBER",  pattern = "#,##0")
 NUMFMT_DATE       <- list(type = "DATE",    pattern = "yyyy-mm-dd")
+# Signed changes for KPI deltas: a sign on every change, "-" for no change.
+NUMFMT_DELTA_PCT      <- list(type = "PERCENT", pattern = '+0.0%;-0.0%;"-"')
+NUMFMT_DELTA_PT       <- list(type = "NUMBER",  pattern = '+0.0" pts";-0.0" pts";"-"')  # store points: =(a-b)*100
+NUMFMT_DELTA_CURRENCY <- list(type = "NUMBER",  pattern = '+$#,##0;-$#,##0;"-"')
 
 # ── repeatCell: font, fill, number-format, alignment -----------------------
 
@@ -573,9 +731,10 @@ fmt_cond_negative <- function(sheet_id, start_row, end_row, start_col, end_col,
 }
 
 fmt_cond_color_scale <- function(sheet_id, start_row, end_row, start_col, end_col,
-                                 min_color = COL_GREEN_LIGHT,
-                                 mid_color = COL_YELLOW_LIGHT,
-                                 max_color = COL_RED_LIGHT, index = 0L) {
+                                 min_color = SCALE_DIV$min_color,   # blue (good, low)
+                                 mid_color = SCALE_DIV$mid_color,   # white
+                                 max_color = SCALE_DIV$max_color,   # red (bad, high)
+                                 index = 0L) {
   list(addConditionalFormatRule = list(
     rule = list(
       ranges = list(grid_range(sheet_id, start_row, end_row, start_col, end_col)),

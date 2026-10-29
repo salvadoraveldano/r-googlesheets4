@@ -156,40 +156,36 @@ clear_writes <- function() {
 # ── Style presets ----------------------------------------------------------
 # Apply STYLE_BODY to the full sheet range FIRST (global default), then
 # override with section-specific styles. Last-writer-wins within one batch.
+#
+# No preset sets a font family: the spreadsheet theme does (THEME_DEFAULT, sent
+# with `do.call(fmt_theme_colors, THEME_DEFAULT)` in the first batch), so one
+# setting changes the whole file. Sizes are points. Bold is the only weight
+# Sheets has; size carries the hierarchy (references/design-principles.md).
 
-STYLE_BODY <- list(
-  font_family = "Arial", font_size = 11,
-  valign = "MIDDLE"
-)
-
-STYLE_BODY_BOLD <- list(
-  font_family = "Arial", font_size = 11, bold = TRUE,
-  valign = "MIDDLE"
-)
-
-STYLE_TITLE <- list(
-  font_family = "Arial", font_size = 18, bold = TRUE,
-  halign = "LEFT", valign = "MIDDLE"
-)
-
-STYLE_SUBTITLE <- list(
-  font_family = "Arial", font_size = 11, italic = TRUE,
-  font_color = COL_MUTED_TEXT,
-  halign = "LEFT", valign = "MIDDLE"
-)
-
-STYLE_SECTION_HEADER <- list(
-  font_family = "Arial", font_size = 12, bold = TRUE,
-  font_color = COL_WHITE, bg_color = COL_BLACK,  # caller overrides bg_color to brand blue (COL_BRAND)
-  halign = "LEFT", valign = "MIDDLE"
-)
-
-STYLE_SUBTOTAL    <- list(bold = TRUE, bg_color = COL_BLUE_LIGHT)
-STYLE_NET_INCOME  <- list(font_size = 12, bold = TRUE, bg_color = COL_BLUE_LIGHT)
-STYLE_REMAINING   <- list(bold = TRUE, bg_color = COL_GREEN_LIGHT)
-STYLE_GRAYED_OUT  <- list(font_color = COL_GRAY_TEXT, bg_color = COL_LIGHT_GRAY)
-STYLE_PCT_ANNOTATION <- list(italic = TRUE, font_color = COL_MUTED_TEXT)
-STYLE_TOTAL       <- list(font_size = 11, bold = TRUE, bg_color = COL_LIGHT_GRAY)
+STYLE_BODY      <- list(font_size = 10, font_color = COL_INK, valign = "MIDDLE")
+STYLE_BODY_BOLD <- list(font_size = 10, font_color = COL_INK, bold = TRUE, valign = "MIDDLE")
+STYLE_TITLE     <- list(font_size = 20, bold = TRUE, font_color = COL_INK,
+                        halign = "LEFT", valign = "BOTTOM")
+STYLE_FINDING   <- list(font_size = 11, italic = FALSE, font_color = COL_TEXT_2,   # one sentence that answers the tab
+                        halign = "LEFT", valign = "MIDDLE")
+STYLE_SUBTITLE  <- STYLE_FINDING
+STYLE_NOTE      <- list(font_size = 9, italic = FALSE, font_color = COL_TEXT_3,    # meta line, source, units
+                        halign = "LEFT", valign = "MIDDLE")
+STYLE_PCT_ANNOTATION <- STYLE_NOTE
+STYLE_SECTION_HEADER <- list(font_size = 12, bold = TRUE, font_color = COL_INK,    # with an ink rule above (fmt_section)
+                             bg_color = COL_WHITE, halign = "LEFT", valign = "BOTTOM")
+STYLE_HEADER    <- list(font_size = 9, bold = TRUE, font_color = COL_TEXT_2,       # table column headers
+                        valign = "BOTTOM", wrap = TRUE)
+STYLE_SUBTOTAL  <- list(bold = TRUE, bg_color = COL_WHITE)
+STYLE_NET_INCOME <- list(font_size = 10, bold = TRUE, bg_color = COL_WHITE)
+STYLE_REMAINING <- list(bold = TRUE, font_color = STATUS$positive$ink, bg_color = COL_WHITE)
+STYLE_GRAYED_OUT <- list(font_color = COL_TEXT_3, italic = TRUE, bg_color = COL_SURFACE)  # 5.3:1
+STYLE_TOTAL     <- list(font_size = 10, bold = TRUE, bg_color = COL_SURFACE)       # the total COLUMN
+STYLE_INPUT     <- list(font_color = COL_INPUT_FG, bg_color = COL_INPUT_BG)        # every typed-in cell
+STYLE_CONTROL   <- list(font_size = 11, bold = TRUE, font_color = COL_INPUT_FG,    # the one picker on a tab
+                        bg_color = COL_INPUT_BG, halign = "CENTER")
+STYLE_CHIP      <- list(font_size = 9, bold = TRUE, font_color = COL_TEXT_3,       # status words; fmt_status() colours them
+                        halign = "CENTER")
 
 # ── apply_style: preset + overrides ----------------------------------------
 
@@ -219,14 +215,15 @@ apply_style <- function(sheet_id, start_row, end_row, start_col, end_col,
 #' Buffer a section-header cell write AND return the formatting requests.
 #'
 #' The label gets buffered (call `flush_writes()` later); the merge / style /
-#' row-height requests are returned so the caller assembles them with other
-#' format requests for one big `batch_format()`.
+#' row-height / top-rule requests are returned so the caller assembles them with
+#' other format requests for one big `batch_format()`. New builds use
+#' `fmt_section()`, which does not merge.
 #'
-#' Returns a list of 3 requests — combine with `c()`, not `list()`.
+#' Returns a list of 4 requests — combine with `c()`, not `list()`.
 write_section_header <- function(ss, sheet_name, sheet_id, row, label,
                                  start_col = 3L, end_col = 8L,
-                                 bg_color  = COL_BLACK,   # override with brand color
-                                 fg_color  = COL_WHITE,
+                                 bg_color  = COL_WHITE,
+                                 fg_color  = COL_INK,
                                  font_size = 12L,
                                  row_height = 30L) {
   write_cell(ss, sheet_name, row, start_col, label)
@@ -234,6 +231,188 @@ write_section_header <- function(ss, sheet_name, sheet_id, row, label,
     fmt_merge(sheet_id, row, row, start_col, end_col),
     apply_style(sheet_id, row, row, start_col, end_col, STYLE_SECTION_HEADER,
                 bg_color = bg_color, font_color = fg_color, font_size = font_size),
-    fmt_row_height(sheet_id, row, row, row_height)
+    fmt_row_height(sheet_id, row, row, row_height),
+    fmt_borders(sheet_id, row, row, start_col, end_col, top = BORDER_INK)
   )
+}
+
+# ── Layout helpers: the design system's components -------------------------
+# Each returns a LIST of requests (combine with `c()`); none writes values or
+# merges cells. Write the text with write_cell() / write_block(). Rows and
+# columns are 1-based. Recipes: references/design-principles.md.
+
+#' Base layer for one tab: body style, gridlines by kind, 16 px gutter columns,
+#' the title block rows, frozen panes and the tab colour.
+#'
+#' @param end_row,end_col  extent of the tab's styled area
+#' @param kind      "dashboard" / "model": gridlines off; "data": gridlines on,
+#'                  row 1 frozen, no title block
+#' @param widths    pixel widths of the content columns from B; column A and
+#'                  the column after the last width become 16 px gutters
+#' @param title_row row of the title (row above: 12 px spacer); the next two
+#'                  rows are the finding (22 px) and the meta line (18 px).
+#'                  Styles go on column B. NULL skips the title block; a data
+#'                  tab skips it unless you pass `title_row`.
+#' @param inputs    TRUE colours the tab blue: "this tab holds inputs"
+fmt_tab_base <- function(sheet_id, end_row, end_col, kind = c("dashboard", "model", "data"),
+                         widths = NULL, title_row = 2L, inputs = FALSE,
+                         freeze_rows = NULL, freeze_cols = NULL) {
+  kind <- match.arg(kind)
+  out <- list(apply_style(sheet_id, 1L, end_row, 1L, end_col, STYLE_BODY),
+              fmt_gridlines(sheet_id, show = kind == "data"))
+  if (!is.null(widths)) out <- c(out, fmt_col_widths(sheet_id, c(16, widths, 16)))
+  else if (kind != "data") out <- c(out, list(fmt_col_width(sheet_id, 1L, 1L, 16L)))
+  if (kind == "data") { if (missing(title_row)) title_row <- NULL; freeze_rows <- freeze_rows %||% 1L }
+  if (!is.null(title_row)) {
+    r <- as.integer(title_row)
+    if (r > 1L) out <- c(out, list(fmt_row_height(sheet_id, r - 1L, r - 1L, 12L)))
+    out <- c(out, list(
+      apply_style(sheet_id, r, r, 2L, 2L, STYLE_TITLE),         fmt_row_height(sheet_id, r, r, 36L),
+      apply_style(sheet_id, r + 1L, r + 1L, 2L, 2L, STYLE_FINDING), fmt_row_height(sheet_id, r + 1L, r + 1L, 22L),
+      apply_style(sheet_id, r + 2L, r + 2L, 2L, 2L, STYLE_NOTE),    fmt_row_height(sheet_id, r + 2L, r + 2L, 18L)))
+  }
+  if (!is.null(freeze_rows) || !is.null(freeze_cols))
+    out <- c(out, list(fmt_freeze(sheet_id, rows = freeze_rows %||% 0L, cols = freeze_cols %||% 0L)))
+  if (isTRUE(inputs)) out <- c(out, list(fmt_tab_color(sheet_id, COL_INPUT_FG)))
+  out
+}
+
+#' A section: a 12 pt bold heading over an ink rule, and (header = TRUE) the
+#' table's column-header row under it: 9 pt bold grey, a #999 rule below,
+#' numeric columns right-aligned.
+#'
+#' @param row           the heading row; the header row is `row + 1`
+#' @param heading       FALSE = only the column-header row, on `row` itself (a
+#'                      table right under the tab title needs no heading)
+#' @param numeric_cols  absolute column indices whose header sits right
+#' @param meta_col      a column on the heading row for a short right-aligned
+#'                      note ("3 of 9 over", "$ thousands")
+fmt_section <- function(sheet_id, row, start_col, end_col, header = TRUE,
+                        numeric_cols = integer(0), meta_col = NULL, heading = TRUE) {
+  if (!isTRUE(heading)) {
+    if (!isTRUE(header)) stop("fmt_section(): heading = FALSE needs header = TRUE", call. = FALSE)
+    row <- row - 1L
+    out <- list()
+  } else out <- list(apply_style(sheet_id, row, row, start_col, end_col, STYLE_SECTION_HEADER),
+                     fmt_row_height(sheet_id, row, row, 30L),
+                     fmt_borders(sheet_id, row, row, start_col, end_col, top = BORDER_INK))
+  if (!is.null(meta_col) && isTRUE(heading))
+    out <- c(out, list(apply_style(sheet_id, row, row, meta_col, meta_col, STYLE_NOTE,
+                                   bold = FALSE, halign = "RIGHT", valign = "BOTTOM")))
+  if (isTRUE(header)) {
+    h <- row + 1L
+    out <- c(out, list(apply_style(sheet_id, h, h, start_col, end_col, STYLE_HEADER, halign = "LEFT"),
+                       fmt_row_height(sheet_id, h, h, 26L),
+                       fmt_borders(sheet_id, h, h, start_col, end_col, bottom = BORDER_STRONG)),
+             lapply(numeric_cols, function(c) fmt_cells(sheet_id, h, h, c, c, halign = "RIGHT")))
+  }
+  out
+}
+
+#' Table body: 10 pt ink, faint row rules, numbers right-aligned in their
+#' format, optional subtotal rows (bold, #999 rule above), total rows (bold,
+#' ink rule above, double ink rule below) and a total column (bold on the
+#' surface grey, #999 rule on its left).
+#'
+#' @param numeric_cols  absolute column indices; get `numfmt` and RIGHT
+#' @param numfmt        one NUMFMT_* for every numeric column, or a list with one
+#'                      per numeric column (NULL entries keep the cell's format)
+#' @param density       "model" = 24 px rows, "dashboard" = 28 px rows
+#' @param total_col     one or more columns that hold totals
+fmt_table_body <- function(sheet_id, start_row, end_row, start_col, end_col,
+                           numeric_cols = integer(0), numfmt = NULL,
+                           density = c("model", "dashboard"),
+                           subtotal_rows = integer(0), total_rows = integer(0), total_col = NULL) {
+  density <- match.arg(density)
+  if (!is.null(numfmt) && !is.null(numfmt$type)) numfmt <- rep(list(numfmt), length(numeric_cols))
+  if (length(numfmt) && length(numfmt) != length(numeric_cols))
+    stop("fmt_table_body(): `numfmt` must be one format or one per numeric column", call. = FALSE)
+  out <- list(apply_style(sheet_id, start_row, end_row, start_col, end_col, STYLE_BODY),
+              fmt_row_height(sheet_id, start_row, end_row, if (density == "model") 24L else 28L),
+              fmt_borders(sheet_id, start_row, end_row, start_col, end_col,
+                          inner_h = BORDER_SUBTLE, bottom = BORDER_SUBTLE))
+  for (k in seq_along(numeric_cols)) {
+    c <- numeric_cols[k]
+    out <- c(out, list(fmt_cells(sheet_id, start_row, end_row, c, c, halign = "RIGHT",
+                                 numfmt = if (length(numfmt)) numfmt[[k]] else NULL)))
+  }
+  for (tc in total_col)
+    out <- c(out, list(apply_style(sheet_id, start_row, end_row, tc, tc, STYLE_TOTAL),
+                       fmt_borders(sheet_id, start_row, end_row, tc, tc, left = BORDER_STRONG)))
+  for (r in subtotal_rows)
+    out <- c(out, list(fmt_cells(sheet_id, r, r, start_col, end_col, bold = TRUE),
+                       fmt_borders(sheet_id, r, r, start_col, end_col, top = BORDER_STRONG)))
+  for (r in total_rows)
+    out <- c(out, list(fmt_cells(sheet_id, r, r, start_col, end_col, bold = TRUE),
+                       fmt_row_height(sheet_id, r, r, 28L),
+                       fmt_borders(sheet_id, r, r, start_col, end_col, top = BORDER_INK, bottom = BORDER_DOUBLE)))
+  out
+}
+
+#' KPI strip: three rows (label 20 px, value 44 px, delta 20 px) with no tiles,
+#' fills or sparklines. The lead value is 28 pt, the others 18 pt, all regular
+#' weight, left-aligned and on one baseline. An ink rule above and a faint rule
+#' below run from the first KPI column to `rule_end_col`. Each delta is coloured
+#' by its KPI's good direction: green for a good change, red for a bad one.
+#'
+#' @param row     the label row; values are row + 1, deltas row + 2
+#' @param cols    one column per KPI, left to right
+#' @param lead    the column of the figure that answers the tab's question
+#' @param good    "up", "down" or "none" per KPI (recycled): a cost is "down"
+#' @param value_numfmt,delta_numfmt  one NUMFMT_* or a list with one per KPI
+#'                (NULL entries keep the cell's format, e.g. text sub-values)
+fmt_kpi_strip <- function(sheet_id, row, cols, lead = cols[1L], good = "up",
+                          value_numfmt = NULL, delta_numfmt = NUMFMT_DELTA_PCT,
+                          rule_end_col = max(cols)) {
+  n <- length(cols)
+  good <- rep_len(good, n)
+  if (!all(good %in% c("up", "down", "none")))
+    stop("fmt_kpi_strip(): `good` must be \"up\", \"down\" or \"none\"", call. = FALSE)
+  per <- function(x) if (is.null(x)) vector("list", n) else if (!is.null(x$type)) rep(list(x), n) else rep_len(x, n)
+  vf <- per(value_numfmt); df <- per(delta_numfmt)
+  r1 <- row; r2 <- row + 1L; r3 <- row + 2L
+  out <- list(fmt_row_height(sheet_id, r1, r1, 20L), fmt_row_height(sheet_id, r2, r2, 44L),
+              fmt_row_height(sheet_id, r3, r3, 20L))
+  for (k in seq_len(n)) {
+    c <- cols[k]
+    out <- c(out, list(
+      apply_style(sheet_id, r1, r1, c, c, STYLE_NOTE, valign = "BOTTOM"),
+      fmt_cells(sheet_id, r2, r2, c, c, font_size = if (c == lead) 28 else 18, bold = FALSE,
+                font_color = COL_INK, halign = "LEFT", valign = "BOTTOM", numfmt = vf[[k]]),
+      fmt_cells(sheet_id, r3, r3, c, c, font_size = 9, bold = FALSE, font_color = COL_TEXT_3,
+                halign = "LEFT", valign = "TOP", numfmt = df[[k]])))
+    if (good[k] != "none") {
+      up <- if (good[k] == "up") COL_POSITIVE else COL_NEGATIVE
+      dn <- if (good[k] == "up") COL_NEGATIVE else COL_POSITIVE
+      # The two rules never overlap (> 0 and < 0), so their priority does not matter.
+      out <- c(out, list(fmt_cond_number(sheet_id, r3, r3, c, c, value = 0, op = "greater", font_color = up),
+                         fmt_cond_number(sheet_id, r3, r3, c, c, value = 0, op = "less", font_color = dn)))
+    }
+  }
+  c(out, list(fmt_borders(sheet_id, r1, r3, min(cols), rule_end_col, top = BORDER_INK, bottom = BORDER_SUBTLE)))
+}
+
+#' Status chips by conditional formatting: each state's word gets its pale fill
+#' and dark ink from STATUS. Leave "fine" states out, so colour shows only on
+#' the rows at risk. A badge (one cell) works the same way, e.g.
+#' `states = c("✓" = "positive", "✕" = "negative"), op = "starts_with"`; size
+#' the cell to its text, because text that spills past the cell has no fill.
+#'
+#' @param states  named character: word = one of names(STATUS), in priority order
+#' @param index   priority of the first rule; the next ones follow (first listed wins)
+fmt_status <- function(sheet_id, start_row, end_row, start_col, end_col, states,
+                       op = c("equals", "starts_with", "contains"), index = 0L) {
+  op <- match.arg(op)
+  if (!is.character(states) || is.null(names(states)) || any(!nzchar(names(states))))
+    stop("fmt_status(): `states` must be a named character vector, e.g. c(Over = \"negative\")", call. = FALSE)
+  bad <- setdiff(states, names(STATUS))
+  if (length(bad))
+    stop("fmt_status(): unknown state colour(s) ", paste(bad, collapse = ", "), "; use ",
+         paste(names(STATUS), collapse = ", "), call. = FALSE)
+  c(list(apply_style(sheet_id, start_row, end_row, start_col, end_col, STYLE_CHIP)),
+    lapply(seq_along(states), function(k) {
+      s <- STATUS[[states[[k]]]]
+      fmt_cond_text(sheet_id, start_row, end_row, start_col, end_col, op = op, text = names(states)[k],
+                    bg_color = s$fill, font_color = s$ink, index = as.integer(index) + k - 1L)
+    }))
 }

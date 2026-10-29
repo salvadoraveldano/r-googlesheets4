@@ -161,7 +161,7 @@ ok("fmt_chart_waterfall omits customSubtotals without indices", is.null(
   fmt_chart_waterfall(3, "T", c(1, 6, 1, 1), c(1, 6, 2, 2))$addChart$chart$spec$waterfallChart$series[[1L]]$customSubtotals))
 ok("fmt_chart_waterfall warns about legend", length(warns(fmt_chart_waterfall(3, "T", c(1, 6, 1, 1), c(1, 6, 2, 2), legend = "BOTTOM_LEGEND"))) == 1L)
 cp <- keep(fmt_chart_pie(3, "T", c(1, 5, 1, 1), c(1, 5, 2, 2), donut = TRUE))$addChart$chart$spec$pieChart
-ok("fmt_chart_pie wraps sources and sets the hole", src(cp$domain) && src(cp$series) && identical(cp$pieHole, 0.55))
+ok("fmt_chart_pie wraps sources and sets the hole", src(cp$domain) && src(cp$series) && identical(cp$pieHole, 0.7))
 ok("fmt_chart_basic warns that right-axis settings do nothing",
    length(warns(fmt_chart_basic(3, "T", "LINE", c(1, 13, 2, 2), ser, y2_title = "x"))) == 1L)
 stops("a chart style refuses an unknown key", fmt_chart_basic(3, "T", "LINE", c(1, 13, 2, 2), ser, style = list(nope = 1)), "unknown key")
@@ -240,6 +240,96 @@ ok("visual_qa's default folder outlives Rscript (not under tempdir())",
    !startsWith(normalizePath(vq, mustWork = FALSE), normalizePath(tempdir())) && endsWith(vq, file.path("visual_qa", "abc123")))
 ok("a sheet URL resolves to its id offline (as batch_format etc. now do)", identical(
    as.character(googlesheets4::as_sheets_id("https://docs.google.com/spreadsheets/d/1abcDEF_-x/edit#gid=0")), "1abcDEF_-x"))
+
+# ── Design tokens and layout helpers (the Ledger default look) ------------------
+hx <- function(c) color_to_hex(c)
+ok("ds_tokens() default ladder is the documented one", identical(
+  vapply(list(COL_ACCENT_100, COL_ACCENT_200, COL_ACCENT, COL_ACCENT_700, COL_ACCENT_800), hx, ""),
+  c("#E9EEF9", "#C8D5F0", "#2457C5", "#1C449A", "#14306C")))
+ok("THEME_DEFAULT feeds fmt_theme_colors() with the accent first and Roboto",
+   identical(THEME_DEFAULT$accent1, "2457C5") && identical(THEME_DEFAULT$font_family, "Roboto") &&
+   !is.null(keep(do.call(fmt_theme_colors, THEME_DEFAULT))$updateSpreadsheetProperties))
+ladder_ok <- function(a) { t <- suppressWarnings(ds_tokens(a))
+  .contrast(t$COL_ACCENT, t$COL_ACCENT_100) >= 4.5 && .contrast(t$COL_ACCENT_700, t$COL_ACCENT_100) >= 7 &&
+  .contrast(t$COL_ACCENT_400, COL_WHITE) >= 3 && .contrast(t$COL_ACCENT, COL_WHITE) >= 3 }
+ok("every swapped accent keeps its ladder readable (600 4.5:1 and 700 7:1 on 100, 400 3:1 on white)",
+   all(vapply(c("2457C5", "7B3F98", "8A3A5C", "0F766E", "B4462B", "6E7F1A", "767676", "C2410C", "1A7F5A"), ladder_ok, NA)))
+stops("ds_tokens() with an accent too light to read", ds_tokens("EEEEEE"), "needs at least 3:1")
+stops("ds_tokens() with a non-hex accent", ds_tokens("blue"), "6-digit hex")
+ok("ds_tokens() warns when the accent sits next to a status hue", length(warns(ds_tokens("0F766E"))) == 1L &&
+   length(warns(ds_tokens("7B3F98"))) == 0L && length(warns(ds_tokens("3A4A5C"))) == 0L)
+ok("status inks reach 4.5:1 on their fills and on white", all(vapply(STATUS, function(s)
+   .contrast(s$ink, s$fill) >= 4.5 && .contrast(s$ink, COL_WHITE) >= 4.5, NA)))
+ok("text tiers, inputs and links reach 4.5:1 on white and on the surface grey", all(vapply(
+   list(COL_INK, COL_TEXT_2, COL_TEXT_3, COL_INPUT_FG, COL_LINK_FG, COL_POSITIVE, COL_NEGATIVE), function(c)
+   .contrast(c, COL_WHITE) >= 4.5 && .contrast(c, COL_SURFACE) >= 4.5, NA)) &&
+   .contrast(COL_INPUT_FG, COL_INPUT_BG) >= 4.5)
+ok("STYLE_GRAYED_OUT passes the audit's contrast floor (was 1.7:1)",
+   .contrast(STYLE_GRAYED_OUT$font_color, STYLE_GRAYED_OUT$bg_color) >= 4.5)
+presets <- mget(grep("^STYLE_", ls(), value = TRUE))
+ok("no STYLE_* preset sets a font family (the theme does)",
+   !any(vapply(presets, function(p) is.list(p) && !is.null(p$font_family), NA)))
+ok("old colour names still exist", all(vapply(c("COL_LIGHT_GRAY", "COL_GRAY_TEXT", "COL_MUTED_TEXT", "COL_RED_TEXT",
+   "COL_GREEN_LIGHT", "COL_BLUE_LIGHT", "COL_YELLOW_LIGHT", "COL_RED_LIGHT", "COL_BRAND", "COL_BRAND_DEEP",
+   "COL_BRAND_SUBTLE", "COL_INK", "COL_POSITIVE", "COL_NEGATIVE", "COL_WARNING", "COL_WARNING_SOFT",
+   "COL_INPUT_FG", "COL_FORMULA_FG", "COL_LINK_FG", "BRAND_FONT"), exists, NA)))
+wsh <- keep(write_section_header(NULL, "T", 3, 5, "Revenue"))
+clear_writes()
+ok("write_section_header() returns merge, style, height and an ink top rule", length(wsh) == 4L &&
+   !is.null(wsh[[1]]$mergeCells) && identical(wsh[[4]]$updateBorders$top$style, "SOLID") &&
+   identical(wsh[[2]]$repeatCell$cell$userEnteredFormat$backgroundColor, COL_WHITE))
+tb <- keep(fmt_tab_base(3, 40, 12, "dashboard", widths = c(224, 112), inputs = TRUE))
+grid <- Filter(function(r) !is.null(r$updateSheetProperties$properties$gridProperties$hideGridlines), tb)
+ok("fmt_tab_base(dashboard) hides gridlines, adds 16 px gutters, colours an input tab",
+   isTRUE(grid[[1]]$updateSheetProperties$properties$gridProperties$hideGridlines) &&
+   any(vapply(tb, function(r) identical(r$updateDimensionProperties$properties$pixelSize, 16L) ||
+                                 identical(r$updateDimensionProperties$properties$pixelSize, 16), NA)) &&
+   any(vapply(tb, function(r) !is.null(r$updateSheetProperties$properties$tabColorStyle), NA)))
+td <- fmt_tab_base(3, 40, 12, "data")
+ok("fmt_tab_base(data) shows gridlines, freezes row 1, no title block", any(vapply(td, function(r)
+   identical(r$updateSheetProperties$properties$gridProperties$frozenRowCount, 1L), NA)) &&
+   !any(vapply(td, function(r) identical(r$repeatCell$cell$userEnteredFormat$textFormat$fontSize, 20), NA)))
+sec <- keep(fmt_section(3, 10, 2, 6, numeric_cols = 3:5, meta_col = 6))
+ok("fmt_section() draws the ink rule, the header rule and right-aligns numeric headers",
+   sum(vapply(sec, function(r) !is.null(r$updateBorders), NA)) == 2L &&
+   sum(vapply(sec, function(r) identical(r$repeatCell$cell$userEnteredFormat$horizontalAlignment, "RIGHT"), NA)) >= 4L)
+body <- keep(fmt_table_body(3, 12, 17, 2, 6, numeric_cols = 3:5, numfmt = NUMFMT_INT, total_rows = 17, total_col = 6))
+ok("fmt_table_body() gives the total row an ink rule over a double rule",
+   any(vapply(body, function(r) identical(r$updateBorders$bottom$style, "DOUBLE") &&
+                               identical(r$updateBorders$top$style, "SOLID"), NA)))
+stops("fmt_table_body() with a numfmt list of the wrong length",
+      fmt_table_body(3, 12, 17, 2, 6, numeric_cols = 3:5, numfmt = list(NUMFMT_INT, NUMFMT_PCT)), "one per numeric column")
+kp <- keep(fmt_kpi_strip(3, 6, 2:6, good = c("down", "up", "up", "none", "up")))
+sizes <- unlist(lapply(kp, function(r) r$repeatCell$cell$userEnteredFormat$textFormat$fontSize))
+cfs <- Filter(function(r) !is.null(r$addConditionalFormatRule), kp)
+first_gt <- cfs[[1]]$addConditionalFormatRule$rule$booleanRule
+ok("fmt_kpi_strip(): one 28 pt lead, 18 pt siblings, two delta rules per KPI with a direction",
+   sum(sizes == 28) == 1L && sum(sizes == 18) == 4L && length(cfs) == 8L &&
+   identical(first_gt$condition$type, "NUMBER_GREATER") &&
+   identical(first_gt$format$textFormat$foregroundColorStyle$rgbColor, COL_NEGATIVE))  # a cost going up is bad
+stops("fmt_kpi_strip() with an unknown direction", fmt_kpi_strip(3, 6, 2:3, good = "sideways"), "must be")
+st <- keep(fmt_status(3, 12, 16, 6, 6, c(Over = "negative", Near = "warning"), index = 2L))
+ok("fmt_status() adds one rule per state in priority order", length(st) == 3L &&
+   identical(st[[2]]$addConditionalFormatRule$index, 2L) && identical(st[[3]]$addConditionalFormatRule$index, 3L))
+stops("fmt_status() with an unknown state colour", fmt_status(3, 1, 2, 1, 1, c(Over = "red")), "unknown state")
+stops("fmt_status() with unnamed states", fmt_status(3, 1, 2, 1, 1, "negative"), "named character")
+ov <- keep(fmt_chart_basic(3, "T", "COMBO", c(1, 8, 1, 1), list(list(range = c(1, 8, 2, 2), type = "COLUMN",
+  override = list(list(index = 0L, color = COL_NEGATIVE))))))$addChart$chart$spec$basicChart$series[[1]]
+ok("a series `override` becomes styleOverrides", identical(ov$styleOverrides[[1]]$index, 0L) &&
+   identical(ov$styleOverrides[[1]]$colorStyle$rgbColor, COL_NEGATIVE))
+wf <- fmt_chart_waterfall(3, "T", c(1, 6, 1, 1), c(1, 6, 2, 2))$addChart$chart$spec$waterfallChart$series[[1]]
+ok("waterfall colours default to the tokens", identical(wf$positiveColumnsStyle$color, COL_POSITIVE) &&
+   identical(wf$subtotalColumnsStyle$color, COL_ACCENT))
+
+ho <- keep(fmt_section(3, 5, 2, 6, numeric_cols = 4, heading = FALSE))
+ok("fmt_section(heading = FALSE) styles only the header row, on `row`", length(ho) == 4L &&
+   ho[[1]]$repeatCell$range$startRowIndex == 4 && identical(ho[[1]]$repeatCell$cell$userEnteredFormat$textFormat$fontSize, 9))
+stops("fmt_section(heading = FALSE, header = FALSE)", fmt_section(3, 5, 2, 6, header = FALSE, heading = FALSE), "needs header")
+tc2 <- fmt_table_body(3, 5, 9, 2, 9, total_col = c(5, 9))
+ok("fmt_table_body() takes several total columns", sum(vapply(tc2, function(r) !is.null(r$updateBorders$left), NA)) == 2L)
+ok("fmt_tab_base(data, title_row = 2) keeps the title block on a data tab",
+   any(vapply(fmt_tab_base(3, 40, 8, "data", title_row = 2L), function(r)
+     identical(r$repeatCell$cell$userEnteredFormat$textFormat$fontSize, 20), NA)))
 
 # ── Every request must serialise ----------------------------------------------
 js <- tryCatch(jsonlite::toJSON(REQS, auto_unbox = TRUE, digits = NA), error = function(e) NULL)

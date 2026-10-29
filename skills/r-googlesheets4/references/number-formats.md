@@ -3,9 +3,10 @@
 Sheets uses ICU/CLDR format patterns. Mostly compatible with Excel, with
 two important differences:
 
-1. `[Red]` color codes from Excel are **not supported** in Sheets number
-   formats. Use conditional formatting (`fmt_cond_negative()`) instead, or
-   use the Sheets-specific `[Color53]` pattern (palette-indexed).
+1. A format can colour a section only with a named colour (`[Red]`,
+   `[Blue]`, `[Green]` … or `[ColorN]`, checked live 2026-10), never an exact
+   hex. For the design system's red, use conditional formatting
+   (`fmt_cond_negative()`) instead.
 2. Comma is always the argument separator in formulas, regardless of
    locale. (Excel uses `;` in EU locales — Sheets doesn't.)
 
@@ -84,16 +85,17 @@ Pattern grammar:
 
 ### Negatives in red — use conditional formatting
 
-`[Red]` from Excel does not work. Two options:
+Two options:
 
 ```r
-# Option 1: Sheets-specific palette index (works in number format)
+# Option 1: a named colour in the format itself (`[Red]` and `[ColorN]` both work)
 list(numberFormat = list(type = "CURRENCY",
-                         pattern = "$#,##0;[Color53]-$#,##0"))
+                         pattern = "$#,##0;[Red]-$#,##0"))
 
 # Option 2 (preferred): conditional format rule
 fmt_cond_negative(sid, 2, 20, 2, 4)   # red text for any negative
 ```
 
-Option 2 layers cleanly with other formatting and is portable across
-sheets.
+Option 2 layers cleanly with other formatting, takes the exact
+`COL_NEGATIVE` hex, and keeps red off model grids (apply it to output tabs
+only; [design-principles.md](design-principles.md)).
