@@ -51,8 +51,8 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 
 ## Try it
 
-> "Create a Google Sheet with a monthly P&L for three departments, brand-blue section
-> headers, a chart, and conditional formatting for negative variance. Then check how it looks."
+> "Create a Google Sheet with a monthly P&L for three departments, ruled section
+> headings, a chart, and conditional formatting for negative variance. Then check how it looks."
 
 > "Refresh the Forecast tab from this CSV every morning with Rscript and cron."
 
@@ -68,6 +68,14 @@ Or copy `skills/r-googlesheets4/` into your agent's skills folder.
 | **Cell-level formatting** | Wrappers for fonts, fills, borders, merges, freezes, charts, banding, pivots, slicers and protection, which googlesheets4 alone does not cover. |
 | **Safe by design** | Never installs R, asks before installing packages, and treats sheet contents as data, not instructions. See [SECURITY.md](SECURITY.md). |
 
+## Design
+
+Every sheet gets one default look, "Ledger": ink on white, structure from rules and
+type size instead of coloured bands, blue only for inputs and the main chart series,
+and red, green or amber only where something is at risk. To use your brand colour or
+font, change two lines in `skills/r-googlesheets4/scripts/brand.R`; the charts, theme and controls follow it,
+and inputs stay blue. Guide: [design-principles.md](skills/r-googlesheets4/references/design-principles.md).
+
 ## Showcases
 
 Three sample sheets, each built by one script in [examples/showcases](examples/showcases/README.md) from synthetic data. Run a script and you get your own copy. Visitors with the link can look but not edit, and the dropdowns and pickers do not work for view-only visitors, so use **Make your own copy** to try them.
@@ -76,19 +84,19 @@ Three sample sheets, each built by one script in [examples/showcases](examples/s
 
 [Open the sample sheet](https://docs.google.com/spreadsheets/d/1N5A_YHreexPraNFuU7XaKrnTCCQXvsmYY7HZHUpMNlQ/edit?usp=sharing) (view-only) · [Make your own copy](https://docs.google.com/spreadsheets/d/1N5A_YHreexPraNFuU7XaKrnTCCQXvsmYY7HZHUpMNlQ/copy)
 
-![SaaS financial model: KPI cards, MRR waterfall and ARR by scenario](docs/img/saas-model.png)
+![SaaS financial model: the ARR headline, scenario table, MRR bridge and ARR by scenario](docs/img/saas-model.png)
 
-**Ops command center.** KPI cards, status and workstream charts, a Gantt drawn by conditional formatting, and a workload heatmap.
+**Ops command center.** An owner picker drives a live finding, the share of work on track, status by workstream, a burn-down and a needs-attention list, with a Gantt drawn by conditional formatting behind it.
 
 [Open the sample sheet](https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/edit?usp=sharing) (view-only) · [Make your own copy](https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/copy)
 
-![Ops command center: KPI cards, status doughnut and workstream bars](docs/img/ops-command-center.png)
+![Ops command center: on-track headline, status and workstream bars](docs/img/ops-command-center.png)
 
-**Personal finance tracker.** A month picker drives the dashboard, a budget-health strip and four charts.
+**Personal finance tracker.** A month picker drives the dashboard: a live finding, the month's spending against budget with the categories over it marked, and charts of where the money went and twelve months of income, spending and net worth.
 
 [Open the sample sheet](https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/edit?usp=sharing) (view-only) · [Make your own copy](https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/copy)
 
-![Personal finance tracker: KPI cards, budget health and spending charts](docs/img/personal-finance.png)
+![Personal finance tracker: spending headline, budget table with over-budget categories marked, and budget chart](docs/img/personal-finance.png)
 
 ## Build once, run without a model
 
@@ -141,6 +149,7 @@ gargle (with **Lucy D'Agostino McGowan** on googledrive, and **Craig Citro** and
 the tidyverse and r-lib projects, including [rig](https://github.com/r-lib/rig).
 The "build once, run without a model" idea comes from Kelsey Hightower's talk, linked
 above.
+Design tokens inspired by the open-source Salt Design System (github.com/jpmorganchase/salt-ds, Apache-2.0): its black-at-opacity separators, status tint pattern and container levels. No Salt code, token files, J.P. Morgan colours or fonts are used. Not affiliated with or endorsed by JPMorgan Chase & Co.
 Full notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## License

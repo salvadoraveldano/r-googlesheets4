@@ -12,18 +12,18 @@
 <meta name="twitter:card" content="summary_large_image">
 <style>
   :root {
-    --bg: #ffffff; --fg: #1b2230; --muted: #566074; --line: #dde2ec;
-    --brand: #2457c5; --brand-fg: #ffffff; --card: #f4f6fb; --code: #eef1f8;
+    --bg: #ffffff; --fg: #141414; --muted: #666666; --line: #e6e6e6;
+    --brand: #2457c5; --brand-fg: #ffffff; --card: #f5f5f5; --code: #efefef;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #0f1420; --fg: #e8ecf5; --muted: #9aa5ba; --line: #283248;
-      --brand: #7ea3f2; --brand-fg: #0f1420; --card: #171e2e; --code: #1d2638;
+      --bg: #141414; --fg: #ededed; --muted: #a3a3a3; --line: #333333;
+      --brand: #7ea3f2; --brand-fg: #141414; --card: #1c1c1c; --code: #262626;
     }
   }
   :root[data-theme="dark"] {
-    --bg: #0f1420; --fg: #e8ecf5; --muted: #9aa5ba; --line: #283248;
-    --brand: #7ea3f2; --brand-fg: #0f1420; --card: #171e2e; --code: #1d2638;
+    --bg: #141414; --fg: #ededed; --muted: #a3a3a3; --line: #333333;
+    --brand: #7ea3f2; --brand-fg: #141414; --card: #1c1c1c; --code: #262626;
   }
   * { box-sizing: border-box; }
   body {
@@ -95,16 +95,16 @@
     <h2>Three sample sheets</h2>
     <p>Each one is built by a single script from synthetic data. Rerun the script to get your own copy.</p>
     <figure>
-      <img src="img/saas-model.png" width="1100" height="585" alt="SaaS financial model: KPI cards, an MRR waterfall chart and ARR by scenario" loading="lazy">
+      <img src="img/saas-model.png" width="1100" height="503" alt="SaaS financial model: the ARR headline, a scenario table, an MRR bridge and ARR by scenario" loading="lazy">
       <figcaption><strong>SaaS financial model.</strong> Eight tabs and a 24-month forecast. One scenario dropdown drives every tab, and 17 integrity checks feed a status badge. <a href="https://docs.google.com/spreadsheets/d/1N5A_YHreexPraNFuU7XaKrnTCCQXvsmYY7HZHUpMNlQ/edit?usp=sharing">Open the sample sheet</a> (view-only) or <a href="https://docs.google.com/spreadsheets/d/1N5A_YHreexPraNFuU7XaKrnTCCQXvsmYY7HZHUpMNlQ/copy">make your own copy</a>.</figcaption>
     </figure>
     <figure>
-      <img src="img/ops-command-center.png" width="1100" height="547" alt="Ops command center: KPI cards, a status doughnut and workstream bar chart" loading="lazy">
-      <figcaption><strong>Ops command center.</strong> KPI cards, status and workstream charts, a Gantt drawn by conditional formatting and a workload heatmap. <a href="https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/edit?usp=sharing">Open the sample sheet</a> (view-only) or <a href="https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/copy">make your own copy</a>.</figcaption>
+      <img src="img/ops-command-center.png" width="1100" height="638" alt="Ops command center: the on-track headline, status and workstream bars" loading="lazy">
+      <figcaption><strong>Ops command center.</strong> An owner picker drives a live finding, the share of work on track, status by workstream, a burn-down and a needs-attention list, with a Gantt drawn by conditional formatting behind it. <a href="https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/edit?usp=sharing">Open the sample sheet</a> (view-only) or <a href="https://docs.google.com/spreadsheets/d/15d2XnvqlwJ4HqnrRCHAgfmw4N5eZq7-CuSFQO6MP73M/copy">make your own copy</a>.</figcaption>
     </figure>
     <figure>
-      <img src="img/personal-finance.png" width="1100" height="525" alt="Personal finance tracker: KPI cards, a budget health strip and spending charts" loading="lazy">
-      <figcaption><strong>Personal finance tracker.</strong> A month picker drives the dashboard, a budget-health strip and four charts. <a href="https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/edit?usp=sharing">Open the sample sheet</a> (view-only) or <a href="https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/copy">make your own copy</a>.</figcaption>
+      <img src="img/personal-finance.png" width="1100" height="568" alt="Personal finance tracker: the spending headline, a budget table with over-budget categories marked, and a budget chart" loading="lazy">
+      <figcaption><strong>Personal finance tracker.</strong> A month picker drives the dashboard: a live finding, spending against budget with the categories over it marked, and charts of where the money went and twelve months of income, spending and net worth. <a href="https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/edit?usp=sharing">Open the sample sheet</a> (view-only) or <a href="https://docs.google.com/spreadsheets/d/1dPKbynmhf3x_9pFuIMvOOBnjIMmAf4Nw9ot3fFmDVs4/copy">make your own copy</a>.</figcaption>
     </figure>
   </section>
 
@@ -128,6 +128,7 @@
 
 <footer>
   <p class="note">MIT licensed. <a href="https://github.com/salvadoraveldano/r-googlesheets4">Source and issues on GitHub</a>. Please report skill problems there, not to the googlesheets4, googledrive or gargle maintainers.</p>
+  <p class="note">Design tokens inspired by the open-source Salt Design System (github.com/jpmorganchase/salt-ds, Apache-2.0): its black-at-opacity separators, status tint pattern and container levels. No Salt code, token files, J.P. Morgan colours or fonts are used. Not affiliated with or endorsed by JPMorgan Chase &amp; Co.</p>
 </footer>
 </body>
 </html>

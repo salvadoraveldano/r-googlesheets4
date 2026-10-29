@@ -168,12 +168,11 @@ new chip replaces the cell value rather than appending.
 **Mitigation (mandatory pattern for chip-dropdown builds):** ship the
 workbook with a prominent in-sheet **instruction banner** that tells the
 opener to right-click any cell in each dropdown column → Data validation
-→ toggle "Allow multiple values" ON, once per copy of the sheet. Suggested
-style: amber bg `#FDEFD8`, bold `#945A06` text, `#F59E0B` 2px border, height
-~42px. Place it near the dropdown range so users see it before editing.
-If the tab has `frozenColumnCount > 0`, painting bg+borders across cells
-(no merge) plus `OVERFLOW_CELL` on the text cell is a working substitute
-for merge — direct merges across the freeze return HTTP 400.
+→ toggle "Allow multiple values" ON, once per copy of the sheet. Style it as
+one note cell, no merge and no painted band:
+`apply_style(sid, r, r, c, c, STYLE_NOTE, bold = TRUE, font_color = STATUS$warning$ink)`,
+the text overflowing into the empty cells to its right. Place it next to the
+dropdown range so users see it before editing.
 
 Re-check Sheets API release notes quarterly; once the toggle is API-exposed,
 drop the banner and set the field programmatically.

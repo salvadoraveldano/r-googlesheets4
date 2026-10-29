@@ -162,8 +162,8 @@ f_sparkline("B2:M2", list(charttype = "line", linewidth = 2, color = "#2457C5"))
 
 # Wrap a value in I() to write it as-is: a cell reference or an expression
 f_sparkline("H2", list(charttype = "bar", max = I("$H$1"),
-                       color1 = I('IF(H2>1,"#E5484D","#18A957")')))
-# → '=SPARKLINE(H2, {"charttype","bar";"max",$H$1;"color1",IF(H2>1,"#E5484D","#18A957")})'
+                       color1 = I('IF(H2>1,"#BB2D27","#2457C5")')))
+# → '=SPARKLINE(H2, {"charttype","bar";"max",$H$1;"color1",IF(H2>1,"#BB2D27","#2457C5")})'
 ```
 
 `charttype` is one of `line`, `column`, `winloss`, `bar` (any other value is a
@@ -183,8 +183,8 @@ f_sparkline("E3:K3", list(color = "#2457C5"), iferror = TRUE)
 text. `color_to_hex()` converts one back for an option like `color`:
 
 ```r
-f_sparkline("B2:M2", list(color = color_to_hex(COL_RED_TEXT)))
-# → '=SPARKLINE(B2:M2, {"color","#C62828"})'
+f_sparkline("B2:M2", list(color = color_to_hex(COL_ACCENT)))
+# → '=SPARKLINE(B2:M2, {"color","#2457C5"})'
 ```
 
 `color_to_hex(hex_to_color("#2457C5"))` returns `"#2457C5"`. A channel the API

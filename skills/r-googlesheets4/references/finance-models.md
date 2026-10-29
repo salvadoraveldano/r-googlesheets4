@@ -16,8 +16,8 @@ Use these when stitching a multi-tab model where:
 For each metric a downstream tab depends on, structure 3 rows:
 
 ```
-Source     (formula, locked, gray)        ← computed via SUMIFS, IF, etc.
-Override   (yellow input, blank default)  ← user types a number to override
+Source     (formula, locked)              ← computed via SUMIFS, IF, etc.
+Override   (STYLE_INPUT, blank default)   ← user types a number to override
 Effective  (formula, used downstream)     ← =IF(ISNUMBER(<override>), <override>, <source>)
 ```
 
@@ -29,7 +29,7 @@ sd_make_soe_block <- function(hdr_row, src_row, ovr_row, eff_row,
                               hdr_label, source_fn, ovr_default = "") {
   write_cell(ss, SD_TAB, hdr_row, COL_LABEL, hdr_label)
   write_cell(ss, SD_TAB, src_row, COL_LABEL, "  Source (raw data — read-only)")
-  write_cell(ss, SD_TAB, ovr_row, COL_LABEL, "  Override (yellow — blank by default)")
+  write_cell(ss, SD_TAB, ovr_row, COL_LABEL, "  Override (type a number; blank by default)")
   write_cell(ss, SD_TAB, eff_row, COL_LABEL, "  Effective (used downstream)")
   for (i in seq_along(MONTH_COLS_24)) {
     c2 <- MONTH_COLS_24[i]; cl <- col_letter(c2)
@@ -44,7 +44,7 @@ sd_make_soe_block <- function(hdr_row, src_row, ovr_row, eff_row,
 
 **When to use:** source formula is complex/data-driven, users need
 ad-hoc overrides but rarely use them.
-**When NOT to use:** the input is already a yellow input row (e.g.,
+**When NOT to use:** the input is already an input row (e.g.,
 a fixed repayment schedule) — just use the single row.
 
 ## 2. Sheet-time gating via single named cell
@@ -171,25 +171,26 @@ module-level `opex_apr_dec_budget_expr`.
 Decision-month + total + muted-future col styling:
 
 ```r
-# Dec'26 col — visual focus: warm bg + bold + thicker borders
+# Dec'26 col — the decision month: raised grey + bold, never blue (blue = input)
 list(apply_style(sid, block_top + 1L, block_bottom_row, COL_FY26_END, COL_FY26_END,
                  STYLE_BODY, halign = "RIGHT", bold = TRUE,
-                 bg_color = hex_to_color("FFF8E1"),
-                 numfmt_type = "CURRENCY",
-                 numfmt_pattern = "$#,##0;[Color53]-$#,##0"))
+                 bg_color = COL_RAISED, numfmt = NUMFMT_CURRENCY))
 
-# FY26 Total col — primary total style
+# FY26 Total col — bold on the surface grey (F5F5F5), #999 rule on its left
+# (fmt_table_body(..., total_col = COL_FY26_TOTAL) does both)
 list(apply_style(sid, block_top + 1L, block_bottom_row, COL_FY26_TOTAL, COL_FY26_TOTAL,
-                 STYLE_TOTAL, bold = TRUE, ...))
+                 STYLE_TOTAL, halign = "RIGHT"),
+     fmt_borders(sid, block_top + 1L, block_bottom_row, COL_FY26_TOTAL, COL_FY26_TOTAL,
+                 left = BORDER_STRONG))
 
-# FY27 cols — muted (gray bg, smaller font)
+# FY27 cols — future periods: muted text, same size, no fill
 list(apply_style(sid, block_top + 1L, block_bottom_row, COL_FY27_START, COL_M_LAST,
-                 STYLE_BODY, halign = "RIGHT",
-                 bg_color = hex_to_color("F5F5F5"),
-                 font_color = COL_MUTED_TEXT, font_size = 9, ...))
+                 STYLE_BODY, halign = "RIGHT", font_color = COL_TEXT_3, ...))
 ```
 
-Communicates priority without requiring the reader to count cols.
+Communicates priority without requiring the reader to count cols. Negatives
+keep the parentheses of `NUMFMT_CURRENCY` and no red: a model grid carries no
+status colour ([design-principles.md](design-principles.md), principle 7).
 Apply at every row across all scenario blocks via a single loop.
 
 ## 8. Two-tab models with cross-tab refs
@@ -212,30 +213,32 @@ flush referenced-tab content + format → flush referring-tab content
 
 Readers of a finance model expect to see at a glance which cells they
 may change. Use the font colours bankers and FP&A teams already know
-(constants in `brand.R`; the §9 and §10 snippets need it, sourced after
-`gs_helpers.R` and `gs_buffer.R`):
+(constants in `gs_helpers.R`; `STYLE_INPUT` and `fmt_status()` in
+`gs_buffer.R`):
 
 | Text colour | Meaning | Constant |
 |---|---|---|
-| Blue | Typed input | `COL_INPUT_FG` |
-| Black | Formula using cells on the same tab | `COL_FORMULA_FG` |
-| Green | Formula that pulls from another tab | `COL_LINK_FG` |
+| Blue on pale blue | Typed input | `COL_INPUT_FG` (2457C5) on `COL_INPUT_BG` (E9EEF9): `STYLE_INPUT` |
+| Black | Formula using cells on the same tab | `COL_FORMULA_FG` (141414) |
+| Green | Formula that pulls from another tab | `COL_LINK_FG` (1D7343) |
 
-Yellow fill is optional, for the handful of key assumptions a reader is
-meant to change. Don't fill every input.
+Every typed-in cell gets `STYLE_INPUT`, one look everywhere: blue text on a
+pale blue fill. The input colours are fixed, so they stay blue after a brand
+accent swap. Put a colour key on each model tab: three cells styled exactly
+like what they explain ("Input", "Formula", "From another tab").
 
 - **Deciding "green" at build time:** the formula text contains `!`, or
   it uses a named range that lives on another tab (`scenario`,
   `check_tol` and other names have no `!`, so a grep for `!` misses
   them).
-- **Model tabs only.** The code is font colour only and applies to
-  Assumptions and the calculation tabs. Summary and Checks are output
-  tabs and keep their own styling, so link-green never sits next to a
-  green PASS fill.
+- **Model tabs only.** The black and green code is font colour only and
+  applies to Assumptions and the calculation tabs. Summary and Checks are
+  output tabs and follow the design system's output styling.
 - **No number typed into a formula row.** A number lives on Assumptions
   in blue, or in a §1 Override row beside the row it overrides. §1
-  mapped to the code: Source = formula colour, Override = blue text on
-  yellow, Effective = formula colour.
+  mapped to the code: Source = formula colour, Override = `STYLE_INPUT`
+  with "[override]" in its label (or a `fmt_note()` on the cell),
+  Effective = formula colour.
 - **One sign convention per model.** Either costs are positive and
   subtracted, or negative and summed. Write it in a note at the top of
   Assumptions; §5 shows what mixing them does.
@@ -246,15 +249,13 @@ meant to change. Don't fill every input.
 
 ```r
 batch_format(ss, list(
-  fmt_cells(asm, 6, 20, 4, 6, font_color = COL_INPUT_FG),          # Assumptions inputs
-  fmt_cells(asm, 6, 8, 4, 6, bg_color = COL_YELLOW_LIGHT),         # the few key ones
+  apply_style(asm, 6, 20, 4, 6, STYLE_INPUT),                      # Assumptions inputs: COL_INPUT_FG on COL_INPUT_BG
   fmt_cells(pnl, 6, 11, 3, 14, font_color = COL_LINK_FG),          # rows pulling from Assumptions
   fmt_cells(pnl, 12, 12, 3, 14, font_color = COL_FORMULA_FG)),     # subtotal of rows on this tab
   strict = TRUE)
 ```
 
-The templates predate this section (`templates/scenario-engine.R` marks
-overrides with yellow fill only). Where they differ, follow §9.
+Where a template differs from this section, follow §9.
 
 ## 10. Checks tab
 
@@ -278,16 +279,17 @@ WARNS <- list(    # depend on the inputs, so they never feed the badge
 FIRST <- 7L; LAST <- FIRST + length(CHECKS) - 1L
 W_FIRST <- LAST + 2L; W_LAST <- W_FIRST + length(WARNS) - 1L
 
-batch_format(ss, list(
-  fmt_named_range(ck, "model_status", 4, 4, 4, 4),
-  fmt_named_range(ck, "check_tol",    4, 4, 7, 7),
-  fmt_cond_text_equals(ck, FIRST, W_LAST, 7, 7, "PASS", bg_color = COL_GREEN_LIGHT, bold = TRUE),
-  fmt_cond_text_equals(ck, FIRST, W_LAST, 7, 7, "FAIL", bg_color = COL_RED_LIGHT, bold = TRUE),
-  fmt_cond_text_equals(ck, FIRST, W_LAST, 7, 7, "WARN", bg_color = COL_WARNING_SOFT, bold = TRUE)),
+batch_format(ss, c(
+  list(fmt_named_range(ck, "model_status", 4, 4, 4, 4),
+       fmt_named_range(ck, "check_tol",    4, 4, 7, 7),
+       apply_style(ck, 4, 4, 7, 7, STYLE_INPUT)),                                  # the tolerance is an input
+  fmt_status(ck, FIRST, W_LAST, 7, 7, c(FAIL = "negative", WARN = "warning")),     # PASS stays plain grey
+  fmt_status(ck, 4, 4, 4, 4, c("✓" = "positive", "✕" = "negative"), op = "starts_with")),   # the badge
   strict = TRUE)
 
 write_cell(ss, CK, 4, 3, "Overall status")
-write_cell(ss, CK, 4, 4, sprintf('=IF(COUNTIF(G%d:G%d,"FAIL")=0,"Model ties: OK","Model ties: CHECK")', FIRST, LAST))
+write_cell(ss, CK, 4, 4, sprintf('=IF(COUNTIF(G%1$d:G%2$d,"FAIL")=0,"✓ Ties: %3$d of %3$d checks pass","✕ "&COUNTIF(G%1$d:G%2$d,"FAIL")&" checks fail")',
+                                 FIRST, LAST, length(CHECKS)))
 write_cell(ss, CK, 4, 6, "Tolerance"); write_cell(ss, CK, 4, 7, 0.01)
 for (j in 1:6) write_cell(ss, CK, 6, 1L + j, c("#", "Check", "Model value", "Expected", "Difference", "Status")[j])
 ck_row <- function(rw, i, x, warn = FALSE) {
@@ -314,8 +316,9 @@ What to check:
 
 Warnings such as cash going negative are business results, not model
 errors. A reader who tries a harsh scenario should see WARN, while the
-badge stays "Model ties: OK".
+badge stays on ✓. The glyph carries the meaning without colour. Size the badge
+cell (D4) to its text: text that spills past the cell has no fill.
 
 **Don't plug.** When a check fails, find the cause and report it. Never
 type a number, or add a balancing row, to turn a FAIL into a PASS. If
-the cause can't be found, leave the badge on CHECK and say so.
+the cause can't be found, leave the badge on ✕ and say so.

@@ -22,6 +22,18 @@ includes it, GPL terms apply to that bundle. Check each package's LICENSE for
 the authoritative text. If you vendor any of their code into this
 repository, include their MIT notice alongside it.
 
+## Design inspiration
+
+| Project | Authors / copyright holders | License | Link |
+|---|---|---|---|
+| Salt Design System (inspiration only) | JPMorgan Chase & Co. | Apache-2.0 | https://github.com/jpmorganchase/salt-ds |
+
+Design tokens inspired by the open-source Salt Design System (github.com/jpmorganchase/salt-ds, Apache-2.0): its black-at-opacity separators, status tint pattern and container levels. No Salt code, token files, J.P. Morgan colours or fonts are used. Not affiliated with or endorsed by JPMorgan Chase & Co.
+
+The skill's design system ("Ledger", `skills/r-googlesheets4/references/design-principles.md`)
+takes those ideas, not files. Its hex values, names and code are this project's own,
+so no Apache-2.0 notice is bundled.
+
 This is an unofficial community project. It is not affiliated with, sponsored by,
 or endorsed by Posit, the tidyverse team, or Google. "Google Sheets" and "Google
 Drive" are trademarks of Google LLC.

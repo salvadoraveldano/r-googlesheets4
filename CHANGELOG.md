@@ -2,6 +2,57 @@
 
 ## Unreleased
 
+**Changed: a new default look, "Ledger" (breaking, visible on the next rebuild)**
+
+- Every sheet now uses one design system, documented in `design-principles.md`: ink
+  on white, structure from rules and type size instead of filled bands, blue only for
+  inputs and the main chart series, red, green and amber only for status. Existing
+  scripts need no code change, and they re-skin when they are next rebuilt: body text
+  goes from 11 to 10 pt, black and blue section bands become ink-on-white headings with
+  a rule above, subtotal fills disappear, status fills get paler, `STYLE_BRAND_TITLE`
+  goes from 26 to 20 pt, and `STYLE_GRAYED_OUT` becomes readable (666666 italic on
+  F5F5F5, was 1.7:1).
+- New tokens in `gs_helpers.R`: surfaces (`COL_GROUND`, `COL_SURFACE`, `COL_RAISED`),
+  rules (`COL_RULE_INK`, `COL_SEP_STRONG`, `COL_SEP_MEDIUM`, `COL_SEP_SUBTLE` and the
+  `BORDER_*` lists), text tiers (`COL_INK`, `COL_TEXT_2`, `COL_TEXT_3`), the input and
+  finance colour code (`COL_INPUT_FG`, `COL_INPUT_BG`, `COL_FORMULA_FG`, `COL_LINK_FG`),
+  `STATUS` fill/ink/mark pairs, the scales `SCALE_DIV` and `SCALE_HEAT`, and the number
+  formats `NUMFMT_CURRENCY_M1` ($3.5M; `_M` rounds it to "$4M") and `NUMFMT_DELTA_PCT`,
+  `_PT` and `_CURRENCY`. `ds_tokens(accent, font)` derives the accent ladder,
+  `CHART_PALETTE`, `SCALE_SEQ`, `THEME_DEFAULT` and `STYLE_CHART`, stops on an accent
+  under 3:1 on white and warns when its hue is close to a status colour.
+- New presets in `gs_buffer.R`: `STYLE_FINDING`, `STYLE_HEADER`, `STYLE_NOTE`,
+  `STYLE_INPUT`, `STYLE_CONTROL` and `STYLE_CHIP`. New layout helpers, each returning
+  requests: `fmt_tab_base()`, `fmt_section()` (`heading = FALSE` for a header row
+  alone), `fmt_table_body()` (`total_col` takes several columns), `fmt_kpi_strip()`
+  and `fmt_status()`.
+- Every old name still works and points at the new look (`COL_BLUE_LIGHT`,
+  `COL_RED_TEXT`, `COL_GRAY_TEXT`, `STYLE_BRAND_*`, `write_section_header_brand()`, …).
+  `write_section_header()` keeps its signature and 30 px row, draws ink on white and now
+  returns 4 requests (an ink rule above); with an old `bg_color = COL_BRAND` and no
+  `fg_color` its label turns white, so it stays readable. A call that overrides
+  `STYLE_SECTION_HEADER`'s fill through `apply_style()` must also pass `font_color`.
+- The font is Roboto, set once through the theme: no preset names a font any more, so
+  send `do.call(fmt_theme_colors, THEME_DEFAULT)` in the first batch of each build.
+  Without it a file keeps Arial and Google's rainbow series. `fmt_theme_colors()` with
+  no arguments still restores Google's defaults.
+- `brand.R` is optional and shrinks to two settings, `ACCENT_HEX` and `BRAND_FONT`;
+  charts, the theme, the control box, scales and waterfall totals follow the accent,
+  and inputs stay blue.
+- Charts: series without a `color` take the theme (the accent, then greys); a series
+  `override` recolours single points; `fmt_chart_pie()` defaults to `pie_hole = 0.7`;
+  waterfall bars default to `COL_POSITIVE`, `COL_NEGATIVE` and `COL_ACCENT`;
+  `fmt_cond_color_scale()` defaults to `SCALE_DIV`.
+- Docs follow the system: `charts.md` (one hue, finding titles, COMBO for a dashed
+  limit line, no right axis), `conditional-formatting.md` (status pairs, scales),
+  `finance-models.md` §7, §9 and §10 (every input in `STYLE_INPUT`, the Checks badge
+  through `fmt_status()`), `buffered-writes.md`, `formatting-batchupdate.md`,
+  `modern-features.md` (rules instead of banding) and the visual-review rubric.
+- Docs fix: `[Red]` and the other named colours DO work in number formats (checked
+  live); `number-formats.md` and `pitfalls.md` said they did not.
+- Credit: the tokens take ideas, not files, from the open-source Salt Design System
+  (Apache-2.0); see `THIRD_PARTY_NOTICES.md`.
+
 **Security**
 
 - `allowed-tools` pre-approves one exact command, `bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" status`.
@@ -20,7 +71,7 @@
 
 - `finance-models.md` §9 and §10: the blue/black/green input, formula and link colour
   code, and a Checks-tab recipe (tolerance cell, PASS/FAIL rows, a badge, warnings
-  that never turn it red, no plugs). `brand.R` adds `COL_INPUT_FG`, `COL_FORMULA_FG`
+  that never turn it red, no plugs). `gs_helpers.R` adds `COL_INPUT_FG`, `COL_FORMULA_FG`
   and `COL_LINK_FG`. Two evals cover them.
 - `GS_OAUTH_CLIENT=/path/client.json`: sign in and build with your own OAuth client.
   The documented `gs4_auth_configure()` route never worked, because that setting

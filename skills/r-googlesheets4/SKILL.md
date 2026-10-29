@@ -125,11 +125,13 @@ ss  <- gs_open_or_create("Quick Demo", "Summary")   # prints the id; reuse via S
 sheet_write(head(mtcars), ss = ss, sheet = "Summary")
 sid <- get_sheet_id(ss, "Summary")
 
-batch_format(ss, list(
-  fmt_freeze(sid, rows = 1L),
-  fmt_gridlines(sid, show = FALSE),
-  fmt_cells(sid, 1, 1, 1, ncol(mtcars), font_family = "Arial", bold = TRUE,
-            font_color = COL_WHITE, bg_color = hex_to_color("2457C5"), halign = "CENTER")
+n <- ncol(mtcars)
+batch_format(ss, c(
+  list(do.call(fmt_theme_colors, THEME_DEFAULT),   # font + chart colours, once per file
+       fmt_freeze(sid, rows = 1L),
+       fmt_gridlines(sid, show = FALSE)),
+  fmt_section(sid, 1, 1, n, heading = FALSE, numeric_cols = 1:n),   # header row: grey bold, rule below
+  fmt_table_body(sid, 2, 7, 1, n, numeric_cols = 1:n)               # faint row rules, numbers right
 ), strict = TRUE)
 
 gs4_browse(ss)
@@ -145,13 +147,25 @@ exposure warnings in that same question, before the user agrees (list in
 [drive-integration.md](references/drive-integration.md#what-a-shared-sheet-exposes)),
 and give the exact sign-in command: `GS_SCOPE_LEVEL=drive bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" auth <email>`.
 
-## Theming
+## Design system
 
-Colors and fonts live in one editable block in [`scripts/brand.R`](scripts/brand.R)
-(`COL_BRAND`, `STYLE_BRAND_SECTION_HEADER`, …). Source it after `gs_buffer.R` and
-change the palette to match the user's organization. Semantic colors (green, red,
-amber) are for data only, never decoration. Use web-safe fonts (Arial) so the PDF
-export matches the screen.
+Every sheet gets the "Ledger" look by default: ink on white with one blue
+accent. Rules and type size carry the structure, blue marks inputs and the
+main chart series, and red, green and amber mark status only, on the rows at
+risk. The tokens load with `gs_helpers.R`, the presets and helpers with
+`gs_buffer.R`. Full guide: [design-principles.md](references/design-principles.md).
+
+- Send `do.call(fmt_theme_colors, THEME_DEFAULT)` once per file, in the first
+  batch. It sets the font (Roboto) and the chart colours; without it the file
+  keeps Arial and Google's rainbow series.
+- Lay out each tab with five helpers that return requests to combine with `c()`:
+  `fmt_tab_base()`, `fmt_section()`, `fmt_table_body()`, `fmt_kpi_strip()` and
+  `fmt_status()`. Inputs take `STYLE_INPUT`; charts take `style = STYLE_CHART`.
+- For a brand colour or font, edit `ACCENT_HEX` and `BRAND_FONT` in
+  [`scripts/brand.R`](scripts/brand.R) and source it after `gs_buffer.R`. Inputs
+  stay blue, so "blue = you can type here" still holds.
+
+Design tokens inspired by the open-source Salt Design System (github.com/jpmorganchase/salt-ds, Apache-2.0): its black-at-opacity separators, status tint pattern and container levels. No Salt code, token files, J.P. Morgan colours or fonts are used. Not affiliated with or endorsed by JPMorgan Chase & Co.
 
 ## Critical gotchas
 

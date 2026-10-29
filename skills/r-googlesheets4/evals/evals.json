@@ -26,7 +26,7 @@
     },
     {
       "id": "build-and-visual-qa",
-      "prompt": "Create a styled Google Sheet with a 3-department monthly budget, a frozen header and brand-colored section headers, then verify how it looks.",
+      "prompt": "Create a styled Google Sheet with a 3-department monthly budget, a frozen header and ruled section headings, then verify how it looks.",
       "expected": [
         "Sources gs_helpers.R and calls gs_connect()",
         "Builds with write_cell/flush_writes/batch_format(strict=TRUE)",

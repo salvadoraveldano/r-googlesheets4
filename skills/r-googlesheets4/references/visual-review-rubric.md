@@ -42,12 +42,15 @@ PDF is a print-setup problem (page breaks, scale), not a column-width problem.
 2. **Column proportion.** Label columns wide enough, numeric columns consistent, no giant empty columns, gutters intentionally narrow and empty.
 3. **Row proportion.** Wrapped text fully visible, header rows taller than body rows, no cramped rows.
 4. **Alignment.** Numbers right-aligned and sharing decimals; text left-aligned; headers aligned with the data below; titles anchored in the first visible column.
-5. **Hierarchy.** The key figure is visible in 5 seconds (title, subtitle, KPIs); section headers distinct from subtotals; one accent color, semantic colors only on data (a finance model's blue/black/green input, formula and link text, [finance-models.md](finance-models.md) §9, counts as data).
-6. **Contrast.** Text readable on its fill (aim for 4.5:1), muted text still legible.
-7. **Whitespace.** Consistent padding, no stray blank rows or columns, no content jammed against the edge.
-8. **Charts.** Not overlapping cells, legible axis labels, series visible (an empty "Add a series" placeholder means the source range is wrong or hidden).
-9. **Errors.** No `#REF!`, `#N/A`, `#DIV/0!`, or formulas shown as text.
-10. **Print.** Sensible page breaks, header rows repeated if the table spans pages, nothing split across pages that should stay together.
+5. **Hierarchy.** The lead figure is the largest thing on the tab and answers the finding line under the title; section headings distinct from subtotals.
+6. **Colour.** Colour only on data, status and inputs: one accent family, status colours only on rows at risk, a finance model's blue/black/green input, formula and link text ([finance-models.md](finance-models.md) §9) counts as data. No banded or zebra rows, no filled header bands, no tab colours except on tabs that hold inputs.
+7. **Contrast.** Text readable on its fill (aim for 4.5:1), muted text still legible.
+8. **Whitespace.** Consistent padding, no stray blank rows or columns, no content jammed against the edge.
+9. **Charts.** Not overlapping cells, series visible (an empty "Add a series" placeholder means the source range is wrong or hidden), no rotated axis labels, no right-axis series. The title states a finding that is true for the data shown, or describes the chart.
+10. **Errors.** No `#REF!`, `#N/A`, `#DIV/0!`, or formulas shown as text.
+11. **Print.** Sensible page breaks, header rows repeated if the table spans pages, nothing split across pages that should stay together.
+
+The design system behind items 5, 6 and 9 is in [design-principles.md](design-principles.md).
 
 ## Report format
 
@@ -57,7 +60,7 @@ One line per issue: `tab!range — what is wrong — fix`. End with a verdict:
 
 ## Limits
 
-- The width estimate is approximate (Arial-like fonts). It is deliberately generous, so a flagged cell is worth a glance, but confirm on the page image before widening.
-- Fonts that are not web-safe render differently in the PDF export.
+- The width estimate is approximate (Arial-like metrics; Roboto, the default theme font, is about the same width). It is deliberately generous, so a flagged cell is worth a glance, but confirm on the page image before widening.
+- A font outside Sheets' font menu renders differently in the PDF export. Roboto and Arial both embed.
 - Report only what you saw. If you did not `Read()` a page image, say so; never describe it from the findings alone.
 - The PDF export endpoint rate-limits bursts (HTTP 429); `visual_qa()` pauses between tabs and retries.

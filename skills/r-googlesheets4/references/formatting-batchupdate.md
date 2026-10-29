@@ -41,12 +41,16 @@ grid_range(sheet_id = 0L, start_row = 1L, end_row = 1L, start_col = 1L, end_col 
 Sheets API rejects hex strings. Convert via `hex_to_color()`:
 
 ```r
-COL_BRAND <- hex_to_color("2457C5")   # brand blue
+hex_to_color("2457C5")   # the default accent, COL_ACCENT
 # → list(red = 0.141, green = 0.341, blue = 0.773)
 ```
 
-`gs_helpers.R` ships generic constants (`COL_BLACK`, `COL_WHITE`,
-`COL_GRAY_TEXT`, …); brand colors live in `brand.R`.
+`gs_helpers.R` loads every design token as a colour list (`COL_INK`,
+`COL_TEXT_3`, `COL_SEP_SUBTLE`, `COL_ACCENT`, `STATUS$negative$fill`, …) and the
+borders built from them (`BORDER_INK`, `BORDER_STRONG`, `BORDER_SUBTLE`,
+`BORDER_DOUBLE`). The list and their uses are in
+[design-principles.md](design-principles.md); `brand.R` only changes the accent
+and the font.
 
 ## Request types and when to use which
 
@@ -59,10 +63,12 @@ unrelated formatting.
 
 ```r
 fmt_cells(sheet_id = 0L, start_row = 1L, end_row = 1L, start_col = 1L, end_col = 6L,
-          font_family = "Arial", font_size = 12, bold = TRUE,
-          font_color = COL_WHITE, bg_color = COL_BRAND,
-          halign = "CENTER", valign = "MIDDLE")
+          font_size = 12, bold = TRUE, font_color = COL_INK,
+          halign = "LEFT", valign = "BOTTOM")
 ```
+
+Leave `font_family` out: the theme sets the font for the whole file
+(`fmt_theme_colors()` below), so one change there moves every cell.
 
 Parameters: `font_family`, `font_size`, `bold`, `italic`, `underline`,
 `font_color`, `bg_color`, `numfmt_type`, `numfmt_pattern`, `halign`,
@@ -97,10 +103,12 @@ Format the **full merged range**, not just the top-left cell.
 ### `updateBorders` → `fmt_borders()`
 
 ```r
-fmt_borders(sid, 25, 25, 1, 6,
-            top    = list(style = "DOUBLE", color = COL_BRAND),
-            bottom = list(style = "DOUBLE", color = COL_BRAND))
+fmt_borders(sid, 25, 25, 1, 6, top = BORDER_INK, bottom = BORDER_DOUBLE)   # a total row
 ```
+
+`BORDER_INK` is `list(style = "SOLID", color = COL_RULE_INK)`; the design system
+draws every rule `SOLID` in ink, #999 or #E6E6E6 and keeps `DOUBLE` for the line
+under a total ([design-principles.md](design-principles.md)).
 
 Border styles: `SOLID` / `SOLID_MEDIUM` / `SOLID_THICK` / `DOUBLE` /
 `DASHED` / `DOTTED` / `NONE`.
@@ -115,7 +123,7 @@ in a final reassertion batch after all other styling.
 ```r
 fmt_gridlines(sid, show = FALSE)
 fmt_freeze(sid, rows = 1L, cols = 0L)
-fmt_tab_color(sid, COL_BRAND)
+fmt_tab_color(sid, COL_INPUT_FG)    # only on tabs that hold inputs (fmt_tab_base(inputs = TRUE) does it)
 fmt_tab_order(ss, c("Cover", "Data", "Forecast"))   # one request per tab: use c()
 ```
 
@@ -182,11 +190,14 @@ ACCENT1, ACCENT2, ... in order, and a slice cannot be coloured individually, so
 the theme is how you choose them.
 
 ```r
-batch_format(ss, list(fmt_theme_colors(
-  accent1 = "2457C5", accent2 = "1F9D8B", accent3 = "F2A33A",
-  accent4 = "7A4FB3", accent5 = "5BA8E0", accent6 = "5B6B8C",
-  font_family = "Arial")), strict = TRUE)
+batch_format(ss, list(do.call(fmt_theme_colors, THEME_DEFAULT)), strict = TRUE)
 ```
+
+`THEME_DEFAULT` (from `ds_tokens()`) is the design system's theme: Roboto,
+ink text, and the chart slots accent, 949494, accent 800, accent 400, 3D3D3D,
+767676, so the first series of every chart is the accent and the rest are greys.
+Send it once per file, in the first batch. A build that skips it gets Arial and
+Google's rainbow series.
 
 Send it before or after the charts: a chart takes its colours from the theme
 when it renders (checked live: an existing pie re-coloured when the theme
@@ -240,13 +251,9 @@ never applies.
 batch_format(ss, list(
   fmt_gridlines(sid, show = FALSE),
   fmt_freeze(sid, rows = 1L),
-  fmt_cells(sid, 1, 1, 1, 6,
-            font_family = "Arial", bold = TRUE, font_size = 12,
-            font_color = COL_WHITE, bg_color = COL_BRAND, halign = "CENTER"),
-  fmt_merge(sid, 1, 1, 1, 6),
+  apply_style(sid, 1, 1, 1, 6, STYLE_HEADER),
   fmt_col_width(sid, 1, 1, 280),
-  fmt_borders(sid, 1, 1, 1, 6,
-              bottom = list(style = "SOLID_MEDIUM", color = COL_BRAND))
+  fmt_borders(sid, 1, 1, 1, 6, bottom = BORDER_STRONG)
 ))
 ```
 
@@ -304,9 +311,8 @@ fmt_global <- function(sid, last_row) {
 
 fmt_pnl_section <- function(sid) {
   list(
-    fmt_borders(sid, 10, 35, 3, 8,
-                top    = list(style = "DOUBLE", color = COL_BRAND),
-                bottom = list(style = "DOUBLE", color = COL_BRAND)),
+    fmt_borders(sid, 10, 10, 3, 8, top = BORDER_INK),          # rule above the block
+    fmt_borders(sid, 35, 35, 3, 8, top = BORDER_INK, bottom = BORDER_DOUBLE),   # total row
     fmt_cells(sid, 11, 35, 4, 6,
               numfmt_type = "NUMBER", numfmt_pattern = '$#,##0;($#,##0);"-"')
   )

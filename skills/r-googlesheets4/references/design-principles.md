@@ -20,7 +20,8 @@ b <- new_batch()
 b$push(do.call(fmt_theme_colors, THEME_DEFAULT))       # font + chart colours, once per file
 b$push(fmt_tab_base(sid, 40, 12, "dashboard", widths = c(224, 112, 112, 112, 112, 24, 96, 96, 96, 96)))
 b$push(fmt_kpi_strip(sid, 6, 2:6, good = c("down", "up", "up", "up", "up"),
-                     value_numfmt = NUMFMT_CURRENCY, delta_numfmt = NUMFMT_DELTA_PCT))
+                     value_numfmt = NUMFMT_CURRENCY, delta_numfmt = NUMFMT_DELTA_PCT,
+                     tol = 0.0005))                      # "+0.0%" stays grey
 b$push(fmt_section(sid, 10, 2, 6, numeric_cols = 3:5, meta_col = 6))
 b$push(fmt_table_body(sid, 12, 17, 2, 6, numeric_cols = 3:5, numfmt = NUMFMT_INT,
                       density = "dashboard", total_rows = 17))
@@ -33,7 +34,7 @@ The helpers only format; none merges cells or writes values.
 
 ## Tokens
 
-All text pairs reach 4.5:1 (WCAG); `scripts/offline-test.R` checks them.
+All text pairs reach 4.5:1 (WCAG); the repo's `scripts/offline-test.R` checks them.
 
 **Text**
 
@@ -143,6 +144,8 @@ except the disabled role.
   right. A control or a badge is ONE cell wide enough for its text, because a
   centred value over two unmerged cells is clipped on both sides.
 - **Gridlines** off on dashboards and models, on for data and log tabs.
+- **Freeze only tabs that are one table.** Frozen rows repeat on every printed
+  page, over a chart or a second block lower down.
 
 ## Components
 
@@ -150,7 +153,7 @@ except the disabled role.
 |---|---|---|
 | Title block | title (B2), finding (B3), meta line (B4: "Sample data · from Transactions rows 2-215 · USD · built 2026-10-23"), spacers | `fmt_tab_base()` |
 | Finding | one sentence that answers the tab's question, with numbers; on a live model a formula (`="ARR reaches "&TEXT(x,"$0.0,,""M""")&" by month 24"`) so it cannot go stale | `STYLE_FINDING` |
-| KPI strip | label / value / delta rows; the lead figure (the one the finding is about) at 28 pt, up to four others at 18 pt; no tiles, fills, top bars or sparklines; deltas coloured by each KPI's good direction; one note row naming the comparison ("Changes are vs August 2026") | `fmt_kpi_strip()` |
+| KPI strip | label / value / delta rows; the lead figure (the one the finding is about) at 28 pt, up to four others at 18 pt; no tiles, fills, top bars or sparklines; deltas coloured by each KPI's good direction; one note row naming the comparison ("Changes are vs August 2026"); a change within `tol` stays grey | `fmt_kpi_strip()` |
 | Section | heading over an ink rule; header row with a #999 rule under it; numeric headers right-aligned | `fmt_section()` |
 | Table | faint row rules, no zebra, numbers right-aligned; a missing value is a grey "-", a real zero is printed | `fmt_table_body()` |
 | Subtotal / total | bold with a #999 rule above / bold with an ink rule above and a double rule below; the total column on `COL_SURFACE` | `fmt_table_body()` |
@@ -181,6 +184,9 @@ except the disabled role.
   sorted largest first, "Everything else" last. Slice colours come only from
   the theme. Status breakdowns are a 100% stacked bar, never a pie.
 - **Legend**: none for one series, `TOP_LEGEND` for two to four.
+- **Axis numbers take the source cells' format**, so a format that prints zero
+  as "-" puts a "-" on the axis. Give chart source columns a format with `$0`
+  for zero.
 - The API has no setting for gridline colour or legend text size; leave them.
 
 ## Change the accent or the font

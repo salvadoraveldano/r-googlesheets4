@@ -17,17 +17,18 @@ API surface that the original skill didn't cover. Helpers in
 
 ## Banded ranges (`addBanding`)
 
-Native alternating-row banding. Cleaner and faster than per-row
-`repeatCell` for table styling.
+Native alternating-row banding. **The design system does not use it:** tables
+get faint row rules from `fmt_table_body()` instead of zebra rows
+([design-principles.md](design-principles.md)). Reach for banding only when the
+user asks for it, on a long data or log tab:
 
 ```r
 fmt_banding(sheet_id   = sid,
             start_row  = 2L, end_row = 100L,
             start_col  = 1L, end_col = 10L,
-            header_color = COL_BRAND,
+            header_color = COL_WHITE,
             first_band   = COL_WHITE,
-            second_band  = hex_to_color("F3F3F3"),
-            footer_color = COL_LIGHT_GRAY)
+            second_band  = COL_SURFACE)
 ```
 
 ⚠️ **Conflict with repeatCell.** Banded background colors get
@@ -199,7 +200,7 @@ stay open" pattern:
 
 ```r
 fmt_protected_range(sid,
-                    description = "Formulas. Edit only the yellow input cells",
+                    description = "Formulas. Edit only the blue input cells",
                     unprotected_ranges = list(grid_range(sid, 5L, 9L, 3L, 3L),    # C5:C9
                                               grid_range(sid, 2L, 2L, 6L, 6L)))   # F2
 ```
@@ -367,9 +368,9 @@ update_req <- list(updateTable = list(
       mk_dropdown_col(3L, "Status",   statuses)
     ),
     rowsProperties = list(
-      headerColorStyle     = list(rgbColor = list(red = 0.14, green = 0.34, blue = 0.77)),
-      firstBandColorStyle  = list(rgbColor = list(red = 1, green = 1, blue = 1)),  # neutralize
-      secondBandColorStyle = list(rgbColor = list(red = 1, green = 1, blue = 1))
+      headerColorStyle     = list(rgbColor = COL_WHITE),   # no header fill; style the text with fmt_section(heading = FALSE)
+      firstBandColorStyle  = list(rgbColor = COL_WHITE),   # neutralize
+      secondBandColorStyle = list(rgbColor = COL_WHITE)
     )
   ),
   fields = "columnProperties,rowsProperties"
@@ -382,8 +383,9 @@ batch_format(ss, list(update_req))
 1. **Banding is auto-applied** — addTable imposes alternating row colors
    plus a dark-green header by default. To make the table visually
    invisible (preserve your existing palette), set both `firstBandColorStyle`
-   and `secondBandColorStyle` to white (or your data-row bg color) and
-   override `headerColorStyle` to match your existing header.
+   and `secondBandColorStyle` to white and `headerColorStyle` to white too
+   (design-system headers have no fill), then check the header text on the
+   page image.
 2. **Grid bounds are enforced** — the table range cannot exceed the
    sheet's `gridProperties.columnCount` / `rowCount`. Error:
    `Range exceeds grid limits. Max rows: N, max columns: N`. Default
@@ -441,19 +443,20 @@ for (s in body$sheets) for (t in s$tables) cat(t$name, "→", t$tableId, "\n")
 
 ## Combining new features
 
-Banded ranges + filter views + protected ranges work well together for
+Row rules + filter views + protected ranges work well together for the
 "editable analyst tab" pattern:
 
 ```r
-batch_format(ss, list(
-  fmt_banding(sid, 1, 1000, 1, 10, header_color = COL_BRAND,
-              first_band = COL_WHITE, second_band = hex_to_color("F3F3F3")),
-  fmt_freeze(sid, rows = 1L),
-  fmt_filter_view(sid, 1, 1000, 1, 10, title = "Default sort"),
-  fmt_protected_range(sid, 1, 1, 1, 10,                  # protect header
-                      description = "Header — do not edit",
-                      warning_only = FALSE,
-                      editor_emails = c("admin@example.com")),
-  fmt_auto_resize_cols(sid, 1, 10)
+batch_format(ss, c(
+  fmt_section(sid, 1, 1, 10, heading = FALSE),   # header row 1: grey bold, #999 rule
+  fmt_table_body(sid, 2, 1000, 1, 10),           # faint row rules, no zebra
+  list(
+    fmt_freeze(sid, rows = 1L),
+    fmt_filter_view(sid, 1, 1000, 1, 10, title = "Default sort"),
+    fmt_protected_range(sid, 1, 1, 1, 10,        # protect header
+                        description = "Header — do not edit",
+                        warning_only = FALSE,
+                        editor_emails = c("admin@example.com")),
+    fmt_auto_resize_cols(sid, 1, 10))
 ))
 ```

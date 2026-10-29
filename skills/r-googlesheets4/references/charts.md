@@ -81,26 +81,52 @@ one series per column:
 ```r
 sid  <- get_sheet_id(ss, "Data")
 dash <- get_sheet_id(ss, "Dash")
-BLUE <- hex_to_color("2457C5"); RED <- hex_to_color("C62828")
+batch_format(ss, list(do.call(fmt_theme_colors, THEME_DEFAULT)), strict = TRUE)   # once per file
 ```
+
+## Look: one hue, a finding for a title
+
+Every chart takes `style = STYLE_CHART` (from `ds_tokens()`): the theme font, an
+11 pt bold ink title on the left, a white background and a white border, so the
+section rule above frames the chart instead of a box.
+
+- **Leave `color` out.** The theme (`THEME_DEFAULT`) colours series 1 with the
+  accent, then grey 949494, the dark accent 800, the light accent 400, and
+  greys 3D3D3D and 767676. Put the series the tab is about first. Set `color` only to pin a
+  token, such as `COL_ACCENT` on the main series or a `STATUS` mark when the
+  categories are states. At most one accent family and one status hue per chart.
+- **The title states a finding that is true for the data** ("Shopping and
+  Health ran 50%+ over budget"), and the axis title carries the unit. A chart
+  title cannot be a formula, so if the data can change, keep the claim true for
+  any likely data or make the title descriptive ("Spending by category") and
+  put the live finding in a cell above the chart.
+- **No rotated axis labels.** Long category names go on a horizontal BAR chart;
+  months go on a LINE chart or get short labels ("Jan", "Feb").
+- **Left axis only.** The right axis cannot be titled or scaled (below), so a
+  second scale becomes a second chart.
+- **Legend:** `NO_LEGEND` for one series, `TOP_LEGEND` for two to four.
+- **Lines:** the main series 3 px, comparisons 2 px, scenarios dotted (upside)
+  and dashed (downside); no smoothing, no point markers.
 
 ## Basic chart: LINE / COLUMN / AREA / SCATTER / COMBO
 
 ```r
 fmt_chart_basic(
   sheet_id     = sid,
-  title        = "Revenue vs costs",
+  title        = "Revenue grew faster than costs, Jan to Jun",
   chart_type   = "LINE",
   domain_range = c(1, 7, 1, 1),                     # A1:A7  (row 1 = header)
   series_list  = list(
-    list(range = c(1, 7, 2, 2), color = BLUE),      # B1:B7
-    list(range = c(1, 7, 3, 3), color = RED)        # C1:C7
+    list(range = c(1, 7, 2, 2), line = list(width = 3)),   # B1:B7, accent (theme slot 1)
+    list(range = c(1, 7, 3, 3), line = list(width = 2))    # C1:C7, grey (theme slot 2)
   ),
   header_count = 1L,          # first cell of each range is the legend label
   anchor       = c(10L, 1L),  # row, col (1-based) of the top-left corner
   size         = c(600L, 371L),
   x_title      = "Month",     # BOTTOM axis title (optional)
-  y_title      = "USD (thousand)"   # LEFT axis title (optional)
+  y_title      = "USD (thousand)",  # LEFT axis title (optional)
+  legend       = "TOP_LEGEND",
+  style        = STYLE_CHART
 )
 ```
 
@@ -111,12 +137,20 @@ Optional keys on each `series_list` entry:
 
 | Key | Becomes | Example |
 |-----|---------|---------|
-| `color` | `colorStyle.rgbColor` | `hex_to_color("2457C5")` |
-| `axis` | `targetAxis` | `"RIGHT_AXIS"` |
+| `color` | `colorStyle.rgbColor` | `COL_ACCENT`; leave it out to take the theme slot |
+| `axis` | `targetAxis` | `"LEFT_AXIS"` (default), `"BOTTOM_AXIS"` (BAR) |
 | `type` | per-series type, for COMBO | `"COLUMN"`, `"LINE"`, `"AREA"` |
 | `line` | `lineStyle` | `list(width = 3, type = "MEDIUM_DASHED")` |
 | `point` | `pointStyle` | `list(shape = "CIRCLE", size = 7)` |
 | `label` | `dataLabel` | `list(type = "DATA", placement = "CENTER")` |
+| `override` | `styleOverrides` | `list(list(index = 3L, color = COL_NEGATIVE))` |
+
+`override` recolours single points (0-based, counted after the header), such
+as the one bar over a limit. The indices are fixed when the chart is built, so
+on bars that a picker or a SORT re-orders the colour stays on the old position.
+There, split the data into two stacked series, "Within limit" (`COL_ACCENT`)
+and "Over limit" (`COL_NEGATIVE`), each a formula, with
+`stacked_type = "STACKED"`.
 
 Things the API does that the helper cannot change:
 
@@ -127,17 +161,20 @@ Things the API does that the helper cannot change:
 - The RIGHT axis cannot be titled, formatted or windowed: see "Chart style,
   offsets and axis windows".
 
-### COMBO
+### COMBO: bars with a dashed limit line
 
-Set `chart_type = "COMBO"` and a `type` on every series. Put the line on the
-right axis when its scale differs:
+Set `chart_type = "COMBO"` and a `type` on every series. This is how to draw a
+dashed limit or target line next to bars: a COLUMN chart rejects `line` on a
+LINE series (HTTP 400). Write the limit as a column of the same value, named in
+its header cell ("Budget"), and keep both series on the left axis:
 
 ```r
-fmt_chart_basic(sid, "Revenue and profit", "COMBO", c(1, 7, 1, 1),
-  list(list(range = c(1, 7, 2, 2), color = BLUE, type = "COLUMN"),
-       list(range = c(1, 7, 4, 4), color = hex_to_color("E0A100"),
-            type = "LINE", axis = "RIGHT_AXIS")),
-  anchor_sheet_id = dash, anchor = c(18L, 1L))
+# Data!E1:E7 = "Budget", then 150 in every row
+fmt_chart_basic(sid, "Revenue ended June above its 150 budget", "COMBO", c(1, 7, 1, 1),
+  list(list(range = c(1, 7, 2, 2), color = COL_ACCENT, type = "COLUMN"),
+       list(range = c(1, 7, 5, 5), color = hex_to_color("3D3D3D"), type = "LINE",
+            line = list(width = 1, type = "MEDIUM_DASHED"))),
+  legend = "TOP_LEGEND", anchor_sheet_id = dash, anchor = c(18L, 1L), style = STYLE_CHART)
 ```
 
 ## Series labels via `headerCount = 1`
@@ -158,8 +195,8 @@ fmt_chart_basic(
   chart_type = "COLUMN",
   domain_range = c(54, 54, 4, 16),         # months header row, D:P
   series_list = list(
-    list(range = c(55, 55, 4, 16), color = BLUE),
-    list(range = c(56, 56, 4, 16), color = hex_to_color("8AB4F8"))
+    list(range = c(55, 55, 4, 16)),          # accent (theme slot 1)
+    list(range = c(56, 56, 4, 16))           # grey (theme slot 2)
   ),
   header_count = 1L,
   stacked_type = "STACKED"
@@ -181,9 +218,12 @@ every other `fmt_chart_basic()` argument through (`anchor_sheet_id`,
 
 ```r
 fmt_chart_bar(sid, "Revenue by month", c(1, 7, 1, 1),
-              list(list(range = c(1, 7, 2, 2), color = BLUE)),
-              anchor_sheet_id = dash, x_title = "USD (thousand)")
+              list(list(range = c(1, 7, 2, 2))),
+              anchor_sheet_id = dash, x_title = "USD (thousand)", style = STYLE_CHART)
 ```
+
+A BAR chart is also the cure for long category names, which a COLUMN chart
+rotates.
 
 In a BAR chart the bottom axis carries the values and the left axis the
 categories, so `x_title` titles the value axis and `y_title` the category axis.
@@ -204,16 +244,18 @@ fmt_chart_waterfall(
   title            = "Cash bridge",
   domain_range     = c(2, 7, 6, 6),
   data_range       = c(2, 7, 7, 7),
-  positive_color   = hex_to_color("2E8B57"),
-  negative_color   = hex_to_color("C62828"),
-  subtotal_color   = hex_to_color("163A85"),
-  connector_type   = "DOTTED",
+  connector_type   = "DOTTED",            # colours default to COL_POSITIVE, COL_NEGATIVE, COL_ACCENT
   subtotal_indices = c(0L, 5L),       # 0-based positions of the total rows
   subtotal_label   = "Total",         # legend entry for the total bars
   data_labels      = TRUE,            # value on every bar
-  anchor_sheet_id  = dash, anchor = c(35L, 1L), size = c(600L, 371L)
+  anchor_sheet_id  = dash, anchor = c(35L, 1L), size = c(600L, 371L),
+  style            = STYLE_CHART
 )
 ```
+
+`positive_color`, `negative_color` and `subtotal_color` default to
+`COL_POSITIVE` (1F7A47), `COL_NEGATIVE` (BB2D27) and `COL_ACCENT`, so a brand
+swap carries through. Pass a colour list to change one.
 
 `subtotal_indices` are 0-based positions inside the ranges. With the default
 `subtotal_is_data = TRUE` those rows are the totals, drawn as full bars
@@ -248,14 +290,20 @@ Waterfall limits (API, not the helper):
 ```r
 fmt_chart_pie(sid, "Spending", domain_range = c(2, 6, 9, 9),   # labels I2:I6
               data_range = c(2, 6, 10, 10),                    # values J2:J6
-              donut = TRUE, pie_hole = 0.55,                   # donut = FALSE: plain pie
-              legend = "RIGHT_LEGEND",
-              anchor_sheet_id = dash, anchor = c(35L, 8L), size = c(450L, 300L))
+              donut = TRUE,                                    # pie_hole 0.7 by default; donut = FALSE: plain pie
+              legend = "NO_LEGEND",
+              anchor_sheet_id = dash, anchor = c(35L, 8L), size = c(450L, 300L),
+              style = STYLE_CHART)
 ```
 
 Start both ranges on the first data row (the builder sets no header). Slice
-colours come from the spreadsheet theme accents (ACCENT1 to ACCENT6); change them
-with an `updateSpreadsheetProperties` theme request, not per slice.
+colours come only from the spreadsheet theme accents (ACCENT1 to ACCENT6), for
+the whole file; set them with `do.call(fmt_theme_colors, THEME_DEFAULT)`, not
+per slice. Use at most five slices, sorted largest first with "Everything
+else" last, so slice 1 is the accent. Put the legend in cells beside the ring
+(a 16 px swatch cell filled with the slot colour, then name, value and share).
+A breakdown by status (on track, at risk, late) is a 100% stacked bar with one
+series per state in its `STATUS` mark, never a pie.
 
 ## Chart style, offsets and axis windows
 
@@ -276,32 +324,35 @@ left axis holds the categories, so `y_min`/`y_max` do nothing useful there.
 
 | Key | Becomes | Notes |
 |-----|---------|-------|
-| `font` | `spec.fontName` | One family for the title, axes and legend, e.g. `"Arial"`, `"Georgia"`. |
+| `font` | `spec.fontName` | One family for the title, axes and legend, e.g. `"Roboto"` (`BRAND_FONT`). |
 | `title_size` | `titleTextFormat.fontSize` | Points. |
 | `title_bold` | `titleTextFormat.bold` | `TRUE` / `FALSE`. |
-| `title_color` | `titleTextFormat.foregroundColorStyle` | Hex string (`"163A85"`, `"#163A85"`) or a `hex_to_color()` list. |
+| `title_color` | `titleTextFormat.foregroundColorStyle` | Hex string (`"141414"`, `"#141414"`) or a `hex_to_color()` list. |
 | `title_position` | `titleTextPosition` | `"LEFT"`, `"CENTER"` or `"RIGHT"`. |
 | `background` | `backgroundColorStyle` | Hex or color list. |
 | `border` | chart `border.colorStyle` | Hex or color list. Plain charts get a thin grey outline; the background colour hides it. |
 | `axis_font_size` | each axis `format.fontSize` | Basic charts only. |
 | `legend_font_size` | nothing | Accepted, ignored, warns. The API has no legend text size. |
 
+`STYLE_CHART` is this list, rebuilt by `ds_tokens()` with your font:
+
 ```r
-STYLE <- list(font = "Arial", title_size = 14, title_bold = TRUE,
-              title_color = "163A85", title_position = "LEFT",
-              background = "F7F9FC", border = "F7F9FC", axis_font_size = 10)
+STYLE_CHART <- list(font = BRAND_FONT, title_size = 11, title_bold = TRUE,
+                    title_color = "141414", title_position = "LEFT",
+                    background = "FFFFFF", border = "FFFFFF", axis_font_size = 9)
+STYLE <- STYLE_CHART
 
 batch_format(ss, list(
   fmt_chart_basic(sid, "Revenue vs costs", "LINE", c(1, 7, 1, 1),
-                  list(list(range = c(1, 7, 2, 2), color = BLUE),
-                       list(range = c(1, 7, 3, 3), color = RED)),
+                  list(list(range = c(1, 7, 2, 2), line = list(width = 3)),
+                       list(range = c(1, 7, 3, 3), line = list(width = 2))),
                   anchor_sheet_id = dash, anchor = c(3L, 2L),
                   x_title = "Month", y_title = "USD (thousand)",
                   y_min = 80, y_max = 200,       # fixed LEFT axis window
                   offset_x = 6L, offset_y = 4L,  # nudge inside the anchor cell
                   style = STYLE),
   fmt_chart_bar(sid, "Revenue by month", c(1, 7, 1, 1),
-                list(list(range = c(1, 7, 2, 2), color = BLUE)),
+                list(list(range = c(1, 7, 2, 2))),
                 anchor_sheet_id = dash, anchor = c(22L, 2L), x_title = "USD (thousand)",
                 style = STYLE),
   fmt_chart_pie(sid, "Spending", c(2, 6, 9, 9), c(2, 6, 10, 10), donut = TRUE,
@@ -313,7 +364,7 @@ batch_format(ss, list(
 ), strict = TRUE)
 ```
 
-Share one `style` list across a dashboard so every chart matches. Checked live
+Share one `style` list (`STYLE_CHART`) across a dashboard so every chart matches. Checked live
 on all four builders: font, title format and position, background, border,
 offsets and the left-axis window all read back from `sheets.charts` and render.
 
@@ -332,6 +383,7 @@ What the API does not give you (verified live, and why the helper cannot fix it)
   title or a window; pie and waterfall charts have no axes.
 - **No legend text size.** `font` changes the legend's family. Its size stays
   at the Sheets default.
+- **No gridline colour or count.** Gridlines stay Sheets' light grey.
 - **`font` is enough.** It sets `fontName`, and Sheets copies that family into
   the title and axis formats itself (read back, they show it), so the helper
   sets no per-part family.

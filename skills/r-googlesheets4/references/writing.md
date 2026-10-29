@@ -159,7 +159,7 @@ range_write(ss, data = tibble(val = sumifs),
 margin <- gs4_formula('=IF(B5=0,"",B10/B5)')
 
 # Sheets-only: SPARKLINE
-sparkline <- gs4_formula('=SPARKLINE(B2:M2, {"color","#2457C5"})')  # brand blue
+sparkline <- gs4_formula('=SPARKLINE(B2:M2, {"color","#2457C5"})')  # the default accent, COL_ACCENT
 ```
 
 ### ⚠️ A formula needs a leading `=` — and the buffered path is the mirror image

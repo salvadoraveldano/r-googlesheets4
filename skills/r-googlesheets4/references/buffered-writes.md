@@ -23,12 +23,11 @@ write_cell(ss, "P&L", 5, 6, '=SUMIFS(Revenue!P:P,Revenue!B:B,$C$1,Revenue!N:N,"6
 flush_writes(ss, strict = TRUE)
 
 # 3. Apply ALL formatting in ONE batchUpdate
-batch_format(ss, list(
-  fmt_gridlines(sid, show = FALSE),
-  fmt_merge(sid, 2, 2, 3, 8),
-  apply_style(sid, 2, 2, 3, 8, STYLE_TITLE),
-  # … all other formatting
-))
+batch_format(ss, c(
+  fmt_tab_base(sid, 40, 8, "model"),          # body style, gutters, title block in B2
+  fmt_section(sid, 6, 2, 8, numeric_cols = 3:8)
+  # , … all other formatting
+), strict = TRUE)
 ```
 
 **Result:** 2 API calls per tab, regardless of cell count. Critical for
@@ -151,21 +150,30 @@ A tab name containing `'` is escaped for you (`Bob's Tab` writes to
 `gs_buffer.R` ships reusable bundles. Apply with `apply_style()`:
 
 ```r
-STYLE_BODY            # Arial 11, valign MIDDLE — apply globally first
-STYLE_BODY_BOLD       # Arial 11 bold
-STYLE_TITLE           # Arial 18 bold, halign LEFT
-STYLE_SUBTITLE        # italic gray
-STYLE_SECTION_HEADER  # white bold on black bg (override bg_color to brand blue, COL_BRAND)
-STYLE_SUBTOTAL        # bold, light blue bg
-STYLE_NET_INCOME      # 12pt bold, light blue bg
-STYLE_REMAINING       # bold, light green bg
-STYLE_GRAYED_OUT      # gray text on light gray bg
-STYLE_PCT_ANNOTATION  # italic, muted gray
-STYLE_TOTAL           # 11 bold, light gray bg
+STYLE_BODY            # 10 pt ink, valign MIDDLE: apply over the whole tab first
+STYLE_BODY_BOLD       # 10 pt bold ink, valign MIDDLE
+STYLE_TITLE           # 20 pt bold ink, LEFT / BOTTOM
+STYLE_FINDING         # 11 pt text 2 (474747), LEFT / MIDDLE: the one-sentence finding
+STYLE_SUBTITLE        # = STYLE_FINDING
+STYLE_NOTE            # 9 pt text 3 (666666), LEFT / MIDDLE: meta line, source, units
+STYLE_PCT_ANNOTATION  # = STYLE_NOTE
+STYLE_SECTION_HEADER  # 12 pt bold ink on white, LEFT / BOTTOM (the ink rule above comes from fmt_section)
+STYLE_HEADER          # 9 pt bold text 2 on white, valign BOTTOM, wrap: table column headers
+STYLE_SUBTOTAL        # bold on white
+STYLE_NET_INCOME      # 10 pt bold on white (rules from fmt_table_body)
+STYLE_REMAINING       # bold, positive ink (17603A) on white
+STYLE_GRAYED_OUT      # 666666 italic on F5F5F5 (5.3:1): a section that does not apply
+STYLE_TOTAL           # 10 pt bold on COL_SURFACE (F5F5F5): the total column
+STYLE_INPUT           # COL_INPUT_FG (2457C5) on COL_INPUT_BG (E9EEF9): every typed-in cell
+STYLE_CONTROL         # 11 pt bold input blue on the input fill, CENTER: the one picker on a tab
+STYLE_CHIP            # 9 pt bold text 3, CENTER: status words; fmt_status() colours them
 ```
 
-Brand-specific overrides (editable palette) are in
-`brand.R`.
+No preset sets a font: the theme does (`do.call(fmt_theme_colors, THEME_DEFAULT)`,
+Roboto by default). The layout helpers `fmt_tab_base()`, `fmt_section()`,
+`fmt_table_body()`, `fmt_kpi_strip()` and `fmt_status()` apply these presets for
+you; recipes in [design-principles.md](design-principles.md). The accent and
+font are set in `brand.R`.
 
 ## `apply_style()` — preset + overrides
 
@@ -176,13 +184,13 @@ apply_style <- function(sheet_id, start_row, end_row, start_col, end_col,
 
 `style` is a list of `fmt_cells` parameters; `...` overrides win. Passing an
 override as `NULL` drops that property from the preset
-(`apply_style(..., STYLE_SECTION_HEADER, bg_color = NULL)`).
+(`apply_style(..., STYLE_TOTAL, bg_color = NULL)`).
 `apply_style()` only forwards to `fmt_cells()`, so what a later call does to
 properties set earlier is decided there: `fmt_cells()` masks each text
 property on its own (`...textFormat.bold`, `.fontSize`, ...), so a later
 `apply_style(..., font_size = 16)` keeps the bold, family and colour from an
-earlier preset on those cells (checked live: a `STYLE_SECTION_HEADER` cell kept
-white bold Arial after a following call set only size and italic).
+earlier preset on those cells (checked live: a styled header cell kept its
+colour, bold and family after a following call set only size and italic).
 
 ```r
 # Use preset as-is
@@ -196,14 +204,14 @@ apply_style(sid, 35, 35, 6, 6, STYLE_NET_INCOME,
 ## `write_section_header()` — buffered helper
 
 Writes the label to the buffer AND returns the format requests (merge +
-style + row height). Use with `c()` to flatten into your format list:
+style + row height + an ink rule above). It is kept for existing scripts; new
+builds write the label with `write_cell()` and style it with `fmt_section()`,
+which does not merge. Use with `c()` to flatten into your format list:
 
 ```r
 all_fmt <- list()
-all_fmt <- c(all_fmt, write_section_header(ss, sn, sid, 4,  "EXECUTIVE SUMMARY",
-                                           bg_color = COL_BRAND))
-all_fmt <- c(all_fmt, write_section_header(ss, sn, sid, 12, "P&L",
-                                           bg_color = COL_BRAND))
+all_fmt <- c(all_fmt, write_section_header(ss, sn, sid, 4,  "Executive summary"))
+all_fmt <- c(all_fmt, write_section_header(ss, sn, sid, 12, "P&L"))
 
 # Buffer the rest of the cells…
 
@@ -211,7 +219,9 @@ flush_writes(ss, strict = TRUE)        # one call for ALL labels + formulas
 batch_format(ss, all_fmt, strict = TRUE)   # one call for ALL formatting
 ```
 
-Returns 3 requests per call — combine with `c()`, not `list()`.
+Returns 4 requests per call — combine with `c()`, not `list()`. The defaults
+are ink on white (`bg_color = COL_WHITE`, `fg_color = COL_INK`), 12 pt, in a
+30 px row.
 
 ## Layered styling — global default first
 

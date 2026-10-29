@@ -24,13 +24,22 @@ list(numberFormat = list(type = "NUMBER", pattern = '$#,##0;($#,##0);"-"'))
 ```r
 NUMFMT_CURRENCY    # $#,##0;($#,##0);"-"
 NUMFMT_CURRENCY_K  # $#,##0,"K";($#,##0,"K");"-"
-NUMFMT_CURRENCY_M  # $#,##0,,"M";($#,##0,,"M");"-"
+NUMFMT_CURRENCY_M  # $#,##0,,"M";($#,##0,,"M");"-"           rounds $3.5M to "$4M"
+NUMFMT_CURRENCY_M1 # $#,##0.0,,"M";($#,##0.0,,"M");"-"       $3.5M: millions for a board
 NUMFMT_PCT         # 0.0%
 NUMFMT_PCT_WHOLE   # 0%
 NUMFMT_ACCOUNTING  # _($* #,##0_);_($* (#,##0);_($* "-"_)
 NUMFMT_INT         # #,##0
 NUMFMT_DATE        # yyyy-mm-dd
+
+# Deltas (KPI changes, variances): a sign on every change, a dash for zero
+NUMFMT_DELTA_PCT      # +0.0%;-0.0%;"-"            type PERCENT
+NUMFMT_DELTA_PT       # +0.0" pts";-0.0" pts";"-"  store points: =(a-b)*100
+NUMFMT_DELTA_CURRENCY # +$#,##0;-$#,##0;"-"
 ```
+
+`fmt_kpi_strip()` uses `NUMFMT_DELTA_PCT` for its delta row by default. A zero
+change prints "-" and gets no colour.
 
 Apply via `fmt_cells()`:
 
@@ -46,7 +55,9 @@ fmt_cells(sid, 2, 20, 2, 4,
 |------------------------------------|------------------------------------------------------|
 | Currency (USD)                     | `$#,##0;($#,##0);"-"`                                |
 | Currency in thousands (`$1.2K`)    | `$#,##0,"K";($#,##0,"K");"-"`                        |
-| Currency in millions (`$1.2M`)     | `$#,##0,,"M";($#,##0,,"M");"-"`                      |
+| Currency in millions (`$1M`)       | `$#,##0,,"M";($#,##0,,"M");"-"`                      |
+| Currency in millions (`$1.2M`)     | `$#,##0.0,,"M";($#,##0.0,,"M");"-"`                  |
+| Signed change (`+4.2%`)            | `+0.0%;-0.0%;"-"`                                    |
 | Accounting (right-aligned `$`)     | `_($* #,##0_);_($* (#,##0);_($* "-"_)`               |
 | Percentage (one decimal)           | `0.0%`                                               |
 | Percentage (whole)                 | `0%`                                                 |
@@ -69,7 +80,7 @@ Pattern grammar:
 | `_x`        | Skip width of char x (alignment trick)                     |
 | `*x`        | Repeat char x to fill remaining width                      |
 | `"text"`    | Literal text                                               |
-| `[Color53]` | Sheets palette color (orange-red); use sparingly           |
+| `[Red]`     | Named colour for that section (`[Black]`, `[Blue]`, `[Green]`, `[Red]`, … or `[ColorN]`); never a hex |
 
 ### Scaling via comma
 
