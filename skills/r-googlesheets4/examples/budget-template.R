@@ -1,7 +1,9 @@
-# budget-template.R — branded multi-dept loop using brand.R
+# budget-template.R — multi-dept loop (one file per department) using brand.R
 #
-# Demonstrates layering brand presets on top of generic styles. Run end-to-end
-# with stub data; replace the placeholder data sources with your real CSVs.
+# Styled with the default "Ledger" look, which loads with gs_helpers.R. brand.R
+# is the one place to change the accent and font for every department file; with
+# its default values it changes nothing. Run end-to-end with stub data; replace
+# the placeholder data sources with your real CSVs.
 
 USER_EMAIL <- NULL  # NULL = account saved by gs_setup.sh; or "you@example.com"
 
@@ -10,7 +12,7 @@ source(file.path(SKILL, "scripts/gs_helpers.R"))
 source(file.path(SKILL, "scripts/gs_buffer.R"))
 source(file.path(SKILL, "scripts/gs_qa.R"))
 source(file.path(SKILL, "scripts/gs_formulas.R"))
-source(file.path(SKILL, "scripts/brand.R"))
+source(file.path(SKILL, "scripts/brand.R"))   # optional: accent + font swap
 
 library(tibble)
 library(dplyr)
@@ -50,56 +52,41 @@ build_dept <- function(dept) {
 
   sid <- get_sheet_id(ss, dept)
 
-  # Buffer cell writes
-  write_cell(ss, dept, 1, 3, dept)
-  write_cell(ss, dept, 2, 3, sprintf('=$C$1&" — FY2026 Budget Summary"'))
-  write_cell(ss, dept, 3, 3, "Department Summary")
-  write_cell(ss, dept, 3, 6, safe_locale_date(Sys.Date()))
+  # Buffer cell writes: title block (rows 2-4), then the executive summary
+  write_cell(ss, dept, 2, 2, sprintf("%s, FY2026 budget", dept))
+  write_cell(ss, dept, 3, 2, sprintf('="Total cost is "&TEXT(C9,"$#,##0")&"; people are "&TEXT(%s,"0%%")&" of it."',
+                                    fraw(f_safe_div("C7", "C9"))))   # the finding: a live formula
+  write_cell(ss, dept, 4, 2, paste("Department summary · stub data · USD · built", safe_locale_date(Sys.Date())))
 
-  # Section headers via brand helper
-  all_fmt <- list()
-  all_fmt <- c(all_fmt,
-               write_section_header_brand(ss, dept, sid, 4, "EXECUTIVE SUMMARY"))
-
-  # Exec summary metrics
-  write_cell(ss, dept, 5, 3, "  Total People")
-  write_cell(ss, dept, 5, 6, '=SUM(People!C:C)')
-  write_cell(ss, dept, 6, 3, "  Total OPEX")
-  write_cell(ss, dept, 6, 6, '=SUM(OPEX!D:D)')
-  write_cell(ss, dept, 7, 3, "  Total Cost")
-  write_cell(ss, dept, 7, 6, "=F5+F6")
+  write_cell(ss, dept, 6, 2, "Executive summary")
+  write_cell(ss, dept, 7, 2, "Total people")
+  write_cell(ss, dept, 7, 3, '=SUM(People!C:C)')
+  write_cell(ss, dept, 8, 2, "Total OPEX")
+  write_cell(ss, dept, 8, 3, '=SUM(OPEX!D:D)')
+  write_cell(ss, dept, 9, 2, "Total cost")
+  write_cell(ss, dept, 9, 3, "=C7+C8")
+  write_cell(ss, dept, 11, 2, "Source: People and OPEX tabs; green figures come from them.")
 
   flush_writes(ss)
   Sys.sleep(2)
 
-  # Composable formatting — global default first, section overrides second
+  # Composable formatting — global default first, section overrides second.
+  # Every helper returns a request list, so they combine with c().
   global_fmt <- c(
-    list(
-      fmt_gridlines(sid, show = FALSE),
-      fmt_freeze(sid, rows = 4),
-      fmt_col_width(sid, 1, 1, 20),
-      fmt_col_width(sid, 3, 3, 280),
-      fmt_col_width(sid, 4, 6, 130),
-      apply_style(sid, 1, 50, 1, 8, STYLE_BODY)
-    )
+    list(do.call(fmt_theme_colors, THEME_DEFAULT)),     # font + chart colours (follows brand.R)
+    fmt_tab_base(sid, 20, 4, "dashboard", widths = c(280, 130))
   )
 
-  header_fmt <- list(
-    fmt_merge(sid, 2, 2, 3, 6),
-    apply_style(sid, 2, 2, 3, 6, STYLE_BRAND_TITLE),
-    apply_style(sid, 3, 3, 3, 3, STYLE_SUBTITLE),
-    fmt_cells(sid, 5, 7, 6, 6,
-              numfmt_type = NUMFMT_CURRENCY$type,
-              numfmt_pattern = NUMFMT_CURRENCY$pattern)
+  summary_fmt <- c(
+    fmt_section(sid, 6, 2, 3, header = FALSE),          # heading over an ink rule
+    fmt_table_body(sid, 7, 9, 2, 3, numeric_cols = 3, numfmt = NUMFMT_CURRENCY,
+                   total_rows = 9),                     # Total cost: ink rule above, double below
+    list(fmt_cells(sid, 7, 8, 3, 3, font_color = COL_LINK_FG),   # finance colour code: from another tab
+         apply_style(sid, 11, 11, 2, 2, STYLE_NOTE),
+         fmt_row_height(sid, 10, 10, 8L))
   )
 
-  emphasis_fmt <- list(
-    apply_style(sid, 7, 7, 3, 6, STYLE_BRAND_SUBTOTAL,
-                numfmt_type = NUMFMT_CURRENCY$type,
-                numfmt_pattern = NUMFMT_CURRENCY$pattern)
-  )
-
-  batch_format(ss, c(global_fmt, all_fmt, header_fmt, emphasis_fmt))
+  batch_format(ss, c(global_fmt, summary_fmt), strict = TRUE)
 
   # Post-build QA
   audit_chart_sources(as.character(ss), sid)

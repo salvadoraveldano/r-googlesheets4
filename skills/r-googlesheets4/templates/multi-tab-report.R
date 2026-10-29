@@ -1,7 +1,8 @@
 # multi-tab-report.R — Cover + multiple data tabs + cross-sheet aggregation
 #
-# A complete styled report: Cover tab with KPIs + 3 raw data tabs.
-# Demonstrates the 2-call pattern (flush + batch_format) per tab.
+# A complete styled report: Cover tab with a KPI strip + 3 raw data tabs, in
+# the default "Ledger" look. Demonstrates the 2-call pattern (flush +
+# batch_format) per tab.
 
 USER_EMAIL <- NULL  # NULL = account saved by gs_setup.sh; or "you@example.com"
 
@@ -9,7 +10,7 @@ SKILL <- Sys.getenv("GS_SKILL_DIR", ".")  # the skill directory (default: run fr
 source(file.path(SKILL, "scripts/gs_helpers.R"))
 source(file.path(SKILL, "scripts/gs_buffer.R"))
 source(file.path(SKILL, "scripts/gs_qa.R"))
-source(file.path(SKILL, "scripts/gs_modern.R"))  # fmt_auto_resize_cols
+source(file.path(SKILL, "scripts/gs_formulas.R"))   # f_safe_div, fraw
 
 library(tibble)
 
@@ -43,64 +44,47 @@ sheet_write(revenue_df, ss, sheet = "Revenue")
 
 # ── Cover tab — KPIs and cross-sheet formulas ──
 cover_id  <- get_sheet_id(ss, "Cover")
-people_id <- get_sheet_id(ss, "People")
-opex_id   <- get_sheet_id(ss, "OPEX")
 
-write_cell(ss, "Cover", 1, 1, "FY2026 Summary")
-write_cell(ss, "Cover", 2, 1, safe_locale_date())
+# Title block (rows 2-4), then a KPI strip: labels row 6, values row 7, a
+# muted sub-value row 8. The lead figure (Net) answers the tab's question.
+write_cell(ss, "Cover", 2, 2, "FY2026 summary")
+share <- function(a, b) fraw(f_safe_div(a, b))    # a/b, "" when b is 0
+write_cell(ss, "Cover", 3, 2, sprintf('="Net is "&TEXT(B7,"$#,##0;($#,##0)")&", a "&TEXT(%s,"0.0%%")&" margin on "&TEXT(C7,"$#,##0")&" of revenue."',
+                                      share("B7", "C7")))   # the finding: a live formula, never stale
+write_cell(ss, "Cover", 4, 2, paste("Demo data · from the People, OPEX and Revenue tabs · USD · built", safe_locale_date()))
 
-write_cell(ss, "Cover", 4, 1, "Total People Cost")
-write_cell(ss, "Cover", 4, 2, "=SUM(People!C:C)")
-write_cell(ss, "Cover", 5, 1, "Total OPEX")
-write_cell(ss, "Cover", 5, 2, "=SUM(OPEX!C:C)")
-write_cell(ss, "Cover", 6, 1, "Total Revenue")
-write_cell(ss, "Cover", 6, 2, "=SUM(Revenue!C:C)")
-write_cell(ss, "Cover", 7, 1, "Net")
-write_cell(ss, "Cover", 7, 2, "=B6-B4-B5")
+kpi <- list(   # column, label, value (cross-sheet formula), sub-value
+  list(2, "Net",         "=C7-D7-E7",          sprintf('=TEXT(%s,"0.0%%")&" margin"', share("B7", "C7"))),
+  list(3, "Revenue",     "=SUM(Revenue!C:C)",  '=COUNTA(Revenue!A2:A)&" customers"'),
+  list(4, "People cost", "=SUM(People!C:C)",   sprintf('=TEXT(%s,"0%%")&" of revenue"', share("D7", "C7"))),
+  list(5, "OPEX",        "=SUM(OPEX!C:C)",     sprintf('=TEXT(%s,"0%%")&" of revenue"', share("E7", "C7"))))
+for (k in kpi) for (i in 1:3) write_cell(ss, "Cover", 5 + i, k[[1]], k[[i + 1]])
+write_cell(ss, "Cover", 10, 2, "Source: SUM over each data tab, so the Cover follows any row you add.")
 
 flush_writes(ss)
 Sys.sleep(2)
 
 # ── Format Cover tab ──
-batch_format(ss, list(
-  fmt_gridlines(cover_id, show = FALSE),
-  fmt_freeze(cover_id, rows = 2),
-  fmt_tab_color(cover_id, hex_to_color("2457C5")),
-  fmt_col_width(cover_id, 1, 1, 280),
-  fmt_col_width(cover_id, 2, 2, 180),
+# fmt_tab_base: body style, gridlines off, 16 px gutters, title/finding/meta rows
+batch_format(ss, c(
+  list(do.call(fmt_theme_colors, THEME_DEFAULT)),     # font + chart colours, once per file
+  fmt_tab_base(cover_id, 12, 6, "dashboard", widths = c(224, 112, 112, 112)),
+  fmt_kpi_strip(cover_id, 6, 2:5, lead = 2, good = "none", value_numfmt = NUMFMT_CURRENCY, delta_numfmt = NULL),
+  list(fmt_row_height(cover_id, 5, 5, 12L), fmt_row_height(cover_id, 9, 9, 8L),
+       apply_style(cover_id, 10, 10, 2, 2, STYLE_NOTE),
+       fmt_cond_negative(cover_id, 7, 7, 2, 2))      # red if Net < 0 (output tabs only)
+), strict = TRUE)
 
-  # Title
-  apply_style(cover_id, 1, 1, 1, 2, STYLE_TITLE),
-  apply_style(cover_id, 2, 2, 1, 1, STYLE_SUBTITLE),
-
-  # KPI labels + values
-  apply_style(cover_id, 4, 7, 1, 1, STYLE_BODY, font_size = 12),
-  fmt_cells(cover_id, 4, 7, 2, 2,
-            font_family = "Arial", font_size = 12, bold = TRUE,
-            numfmt_type    = NUMFMT_CURRENCY$type,
-            numfmt_pattern = NUMFMT_CURRENCY$pattern,
-            halign = "RIGHT"),
-
-  # Net row gets emphasis
-  apply_style(cover_id, 7, 7, 1, 2, STYLE_NET_INCOME,
-              numfmt_type    = NUMFMT_CURRENCY$type,
-              numfmt_pattern = NUMFMT_CURRENCY$pattern),
-
-  # Conditional: red if Net < 0
-  fmt_cond_negative(cover_id, 7, 7, 2, 2)
-))
-
-# ── Format raw data tabs ──
+# ── Format raw data tabs: gridlines on, row 1 frozen, a grey header over a rule ──
 for (tab in c("People", "OPEX", "Revenue")) {
   tab_id <- get_sheet_id(ss, tab)
-  batch_format(ss, list(
-    fmt_freeze(tab_id, rows = 1),
-    fmt_cells(tab_id, 1, 1, 1, 5,
-              font_family = "Arial", bold = TRUE, font_size = 10,
-              bg_color = COL_BLUE_LIGHT,
-              halign = "CENTER"),
-    fmt_auto_resize_cols(tab_id, 1, 5)
-  ))
+  batch_format(ss, c(
+    fmt_tab_base(tab_id, 4, 3, "data"),
+    fmt_section(tab_id, 1, 1, 3, numeric_cols = 3, heading = FALSE),
+    list(fmt_cells(tab_id, 1, 1, 1, 3, bg_color = COL_WHITE),   # drop sheet_write()'s grey header fill
+         fmt_cells(tab_id, 2, 4, 3, 3, numfmt = NUMFMT_CURRENCY),
+         fmt_col_width(tab_id, 1, 3, 112L))
+  ), strict = TRUE)
   Sys.sleep(1)
 }
 
