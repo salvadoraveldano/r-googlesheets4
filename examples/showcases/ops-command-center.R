@@ -1,13 +1,14 @@
 # =============================================================================
 # ops-command-center.R - "Ops Command Center - Sample Data" showcase sheet
 # =============================================================================
-# Builds: a five-tab project / ops dashboard in Google Sheets from synthetic data.
-#   Command Center  KPI cards, one-line top-risk takeaway, status doughnut, workstream stacked bar, burn-down
-#                   (planned vs actual), top-5 "needs attention" list, owner picker
-#   Tasks           45 tasks, dropdowns, banding, filter, sparkline progress bars,
+# Builds: a five-tab project / ops dashboard in Google Sheets from synthetic data,
+#         styled with the skill's default "Ledger" design system.
+#   Command Center  owner picker, live finding line, KPI strip, status and workstream 100%/stacked bars,
+#                   burn-down (planned vs actual), top-5 "needs attention" table
+#   Tasks           45 tasks, dropdowns, filter, saved views, slicer, sparkline progress bars,
 #                   formula columns (days left, overdue, risk score, health) ready down to row 120
 #   Timeline        weekly Gantt grid drawn by conditional formatting from formulas
-#   Workload        owner x status counts and hours with heatmaps, capacity inputs
+#   Workload        owner x status counts and hours, load bars, a heatmap, capacity inputs
 #   Lists           the fixed "as of" date, risk-score weights, dropdown sources, chart data
 #
 # First run (creates your own copy and prints its id; needs the saved login from gs_setup.sh):
@@ -153,6 +154,11 @@ message(sprintf("[data] %d tasks | done %d | overdue %d | blocked %d | hours lef
                 EXP$total, EXP$done, EXP$over, EXP$blocked, EXP$hours, 100 * EXP$ontrack))
 message("[data] health: ", paste(names(table(EXP$health)), table(EXP$health), collapse = ", "))
 
+# The Workload chart is not driven by the owner picker, so its title states what the sample shows.
+open_h <- tapply(ifelse(tk$status == "Done", 0, tk$est * (1 - tk$pct)), tk$owner, sum)
+TTL_WL <- sprintf("%s has the most hours left: %s of %s", names(which.max(open_h)),
+                  formatC(round(max(open_h)), format = "d", big.mark = ","), formatC(round(sum(open_h)), format = "d", big.mark = ","))
+
 # ── Layout constants (the cross-tab references derive from these; the dropdown lists on Lists start at row 12 and are written literally) ──
 T_HDR <- 3L; T_ROW1 <- 4L; T_ROWN <- T_ROW1 + n - 1L; T_AGG <- 120L   # T_ROWN = last sample task; T_AGG = last prefilled row
 # Every Tasks formula column, the Timeline rows, the conditional formats and the KPI/chart formulas run to row T_AGG, and each
@@ -168,37 +174,56 @@ THR_ROW <- 7L                                               # Lists row of the A
 ASOF_REF <- "Lists!$B$5"; START_REF <- "Lists!$B$6"; THR_REF <- sprintf("Lists!$B$%d", THR_ROW); CRIT <- "Lists!$B$8"
 L_STATUS <- "Lists!$A$12:$A$15"; L_PRIO <- "Lists!$B$12:$B$15"; L_PRIOW <- "Lists!$C$12:$C$15"
 L_OWNER  <- "Lists!$D$12:$D$18"; L_WS <- "Lists!$E$12:$E$16"; L_PICK <- "Lists!$F$12:$F$19"
-SEL <- "'Command Center'!$K$2"                              # owner picker cell (blank counts as "All people", see Lists!B8)
+CTRL <- c(2L, 11L)                                          # owner picker: Command Center K2
+SEL <- "'Command Center'!$K$2"                              # (blank counts as "All people", see Lists!B8)
 OWN_SCOPE <- sprintf('((%s=%s)+(%s="*")>0)', tr("owner"), CRIT, CRIT)     # CRIT is "*" for everyone, else the owner's name
 # COUNTIFS / SUMIFS criteria for the same view. "*" matches text only, so a task with a blank owner would drop out of All people
 # (OWN_SCOPE above, in array formulas, already keeps it): count by ID instead, and let everyone be "anything but (all)".
 IN_VIEW <- sprintf('%s,"<>",%s,IF(%s="*","<>(all)",%s)', tr("id"), tr("owner"), CRIT, CRIT)
-LW_BAR <- 41L; LW1 <- 42L; LW_DEF <- LW1 + length(RISK_W)                  # Lists: "How risk is scored" block (bar, 4 weights, definition)
-WLD_BAR <- LW_DEF + 2L; WLD1 <- WLD_BAR + 1L; WLD_LAST <- WLD1 + 1L        # Lists: "Workload limits" block (bar, overload weeks, load bar scale)
+KV_TOTAL <- sprintf("COUNTIFS(%s)", IN_VIEW)                 # tasks in view (said in the B4 meta line, not a KPI)
+LW_BAR <- 41L; LW1 <- 42L; LW_DEF <- LW1 + length(RISK_W)                  # Lists: "How risk is scored" block (heading, 4 weights, definition)
+WLD_BAR <- LW_DEF + 2L; WLD1 <- WLD_BAR + 1L; WLD_LAST <- WLD1 + 1L        # Lists: "Workload limits" block (heading, overload weeks, load bar scale)
 OVERLOAD_REF <- sprintf("Lists!$B$%d", WLD1); LOADBAR_REF <- sprintf("Lists!$B$%d", WLD1 + 1L)
 W_REF <- sprintf("Lists!$B$%d", LW1 + 0:3)                                 # points per priority weight, gap, overdue, blocked
 names(W_REF) <- names(RISK_W)
 BD_HDR <- 22L; BD_ROW1 <- 23L; BD_WK_N <- 17L; BD_WK_LAST <- BD_ROW1 + BD_WK_N - 1L   # chart data on Lists
+ST_HDR <- BD_ROW1 + 6L; ST_ROW <- ST_HDR + 1L                              # Lists D29:H30: all tasks by status, one row (status bar)
 TL_HDR <- 4L; TL_ROW1 <- 5L; TL_ROWD <- TL_ROW1 + n - 1L; TL_ROWN <- T_AGG + 1L   # Timeline row = Tasks row + 1; TL_ROWD = last sample task
 TL_W1 <- 7L; TL_WN <- TL_W1 + N_WEEKS - 1L
-WL_T1_HDR <- 5L; WL_T1_ROW1 <- 6L; WL_T1_ROWN <- WL_T1_ROW1 + length(OWNERS) - 1L; WL_T1_TOT <- WL_T1_ROWN + 1L
-WL_T2_HDR <- 16L; WL_T2_ROW1 <- 17L; WL_T2_ROWN <- WL_T2_ROW1 + length(OWNERS) - 1L; WL_T2_TOT <- WL_T2_ROWN + 1L
-CC_LAST_ROW <- 57L
-CC_COLW <- 82L; CC_W <- 12L * CC_COLW; CC_GAP <- 12L        # Command Center: columns B..M are 984 px wide; the two top charts share it
-CC_HALF <- (CC_W - CC_GAP) %/% 2L                           # 486 px each
-CC_BAR_DX <- CC_HALF + CC_GAP - 6L * CC_COLW                # right chart starts in column H (6 columns in), nudged so the gap is CC_GAP
+WL_T1_HDR <- 7L; WL_T1_ROW1 <- 8L; WL_T1_ROWN <- WL_T1_ROW1 + length(OWNERS) - 1L; WL_T1_TOT <- WL_T1_ROWN + 1L
+WL_T2_HDR <- WL_T1_TOT + 3L; WL_T2_ROW1 <- WL_T2_HDR + 1L; WL_T2_ROWN <- WL_T2_ROW1 + length(OWNERS) - 1L; WL_T2_TOT <- WL_T2_ROWN + 1L
+WL_NOTE <- WL_T2_TOT + 3L                                   # below the chart beside table 2
+# Command Center, on the Ledger dashboard grid: A16 | B224 | C-F 112 (D 128: "Data & Reporting") | G24 | H-J 3x96 | K128 | L16
+CC_WIDTHS <- c(224, 112, 128, 112, 112, 24, 96, 96, 96, 128)
+CC_W <- as.integer(sum(CC_WIDTHS))                           # 1128 px: the charts fill B..K
+K_ROW <- 6L; K_VAL <- K_ROW + 1L                             # KPI strip: labels 6, values 7, sub-lines 8, note 9
+K_COLS <- c(2:6, 9L)                                         # on track (lead), done, overdue, blocked, at risk | hours left (I: G-H leave room for the at-risk sub-line)
+kv <- function(k) sprintf("%s%d", col_letter(K_COLS[k]), K_VAL)   # a KPI value cell, e.g. kv(6) = "I7"
+ST_SEC <- 11L; CH_ST <- 12L; CH_WS <- 20L                    # status section: status bar rows 12-19, workstream bars 20-32
+BD_SEC <- 34L; CH_BD <- 35L; BD_NOTE <- 51L                  # burn-down: chart rows 35-50, notes 51-52
+ATT_SEC <- 54L; ATT_HDR <- ATT_SEC + 1L; ATT_ROW1 <- ATT_HDR + 1L; ATT_ROWN <- ATT_ROW1 + 4L; ATT_NOTE <- ATT_ROWN + 1L
+ABOUT <- ATT_NOTE + 2L
+CC_LAST_ROW <- ABOUT + 7L
+att <- function(col) sprintf("%s%d", col_letter(col), ATT_ROW1)   # top row of the Needs-attention table
 
-# ── Palette ──────────────────────────────────────────────────────────────────
-ST_HEX    <- c("Not started" = "9DB0D3", "In progress" = "2457C5", "Blocked" = "F5A524", "Done" = "18A957")
-C_SLATE   <- hex_to_color("4A5568"); C_INPUT <- hex_to_color("1F4FBF"); C_INPUT_BG <- hex_to_color("FFF8DC")
-C_BAND    <- hex_to_color("F5F7FB"); C_GRID  <- hex_to_color("DDE3EE"); C_CARD <- hex_to_color("F1F5FD")
-C_RED_BG  <- hex_to_color("FDECEC"); C_AMB_BG <- hex_to_color("FEF4E6"); C_AMB_FG <- hex_to_color("9A5B00")
-C_GRN_BG  <- hex_to_color("E7F6EE"); C_GRN_FG <- hex_to_color("14804A"); C_GREY_FG <- hex_to_color("5F6B7A")
-C_GREY_BG <- hex_to_color("EEF0F4"); C_RISK_BG <- hex_to_color("FFF3D6"); C_RISK_FG <- hex_to_color("B45309")
-C_ASOF    <- hex_to_color("FFF3D6")
+# ── Status colours: one accent family plus one status hue (Blocked); Done is "fine", so grey ──
+GREY <- hex_to_color(CHART_PALETTE[2])
+ST_COL <- list("Not started" = COL_ACCENT_400, "In progress" = COL_ACCENT, "Blocked" = COL_WARNING, "Done" = GREY)
+hx <- function(col) color_to_hex(col)                        # "#RRGGBB", for SPARKLINE colours
 NF_DATE <- list(type = "DATE", pattern = "mmm d, yyyy"); NF_DSHORT <- list(type = "DATE", pattern = "mmm d")
 NF_DEC1 <- list(type = "NUMBER", pattern = "#,##0.0"); NF_NUM0 <- list(type = "NUMBER", pattern = "0")
 NF_HRS  <- list(type = "NUMBER", pattern = '#,##0" h"')
+NF_VS_PLAN <- list(type = "NUMBER", pattern = '+#,##0" h vs plan";-#,##0" h vs plan";"on plan"')
+NF_ZERO_BLANK <- list(type = "NUMBER", pattern = "0;-0;;@")   # chart data: a zero shows no "0" data label
+
+# A table's column-header row with no section heading above it; `ink` adds the block's top rule.
+col_header <- function(sid, r, c1, c2, num = integer(0), ink = FALSE)
+  c(fmt_section(sid, r, c1, c2, numeric_cols = num, heading = FALSE),
+    if (ink) list(fmt_borders(sid, r, r, c1, c2, top = BORDER_INK)))
+# Title rows for the tabs whose column A holds data (fmt_tab_base() puts its title block in column B).
+title_a <- function(sid, note_col = 1L)
+  list(apply_style(sid, 1, 1, 1, 1, STYLE_TITLE), fmt_row_height(sid, 1, 1, 36L),
+       apply_style(sid, 2, 2, note_col, note_col, STYLE_NOTE), fmt_row_height(sid, 2, 2, 22L))
 
 # ── Connect and create/open the sheet ────────────────────────────────────────
 gs_connect(USER_EMAIL)
@@ -212,6 +237,8 @@ cat("SHEET_ID=", ss_id, "\n", sep = "")
 gs_reset_tabs(ss, TABS)                               # rebuilding in place must not stack charts, rules, protections or filter views; only our tabs
 sid_cc <- get_sheet_id(ss, TAB_CC); sid_t <- get_sheet_id(ss, TAB_TASKS); sid_tl <- get_sheet_id(ss, TAB_TL)
 sid_wl <- get_sheet_id(ss, TAB_WL); sid_l <- get_sheet_id(ss, TAB_LISTS)
+# Theme first: the font and the chart colours follow it.
+batch_format(ss, list(do.call(fmt_theme_colors, THEME_DEFAULT)), strict = TRUE)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 1: buffer every cell write (values and formulas), then flush once
@@ -219,19 +246,19 @@ sid_wl <- get_sheet_id(ss, TAB_WL); sid_l <- get_sheet_id(ss, TAB_LISTS)
 
 # ---- Lists -------------------------------------------------------------------
 write_cell(ss, TAB_LISTS, 1, 1, "Lists and settings")
-write_cell(ss, TAB_LISTS, 2, 1, paste0("Sample data. Blue-on-yellow cells are inputs: dates, threshold, risk weights, priority weights, workload limits. Grey lists feed the dropdowns; ",
+write_cell(ss, TAB_LISTS, 2, 1, paste0("Sample data. Blue cells are inputs: dates, threshold, risk weights, priority weights, workload limits. Grey lists feed the dropdowns; ",
   "their names are matched exactly by the formulas and by the Tasks rows, so rename one only together with the Tasks column."))
-write_cell(ss, TAB_LISTS, 4, 1, "SETTINGS")
+write_cell(ss, TAB_LISTS, 4, 1, "Settings")
 write_cell(ss, TAB_LISTS, 5, 1, "As-of date");                  write_cell(ss, TAB_LISTS, 5, 2, format(ASOF))
 write_cell(ss, TAB_LISTS, 5, 3, "Fixed so this sample never changes. To make the sheet live, replace this cell with =TODAY().")
 write_cell(ss, TAB_LISTS, 6, 1, "Timeline start (a Monday)");   write_cell(ss, TAB_LISTS, 6, 2, format(START))
 write_cell(ss, TAB_LISTS, 6, 3, "First week on the Timeline and the burn-down chart.")
 write_cell(ss, TAB_LISTS, THR_ROW, 1, "At-risk threshold");     write_cell(ss, TAB_LISTS, THR_ROW, 2, RISK_THRESHOLD)
-write_cell(ss, TAB_LISTS, THR_ROW, 3, sprintf("An open task with a risk score at or above this is flagged At risk. The score is defined in HOW RISK IS SCORED, row %d.", LW_BAR))
+write_cell(ss, TAB_LISTS, THR_ROW, 3, sprintf("An open task with a risk score at or above this is flagged At risk. The score is defined under How risk is scored, row %d.", LW_BAR))
 write_cell(ss, TAB_LISTS, 8, 1, "Owner criterion (formula)")
 write_cell(ss, TAB_LISTS, 8, 2, sprintf('=IF(OR(%s="",%s="%s"),"*",%s)', SEL, SEL, ALL_LABEL, SEL))
-write_cell(ss, TAB_LISTS, 8, 3, "Driven by the Owner view picker on the Command Center. A blank picker counts as All people.")
-write_cell(ss, TAB_LISTS, 10, 1, "DROPDOWN SOURCES")
+write_cell(ss, TAB_LISTS, 8, 3, "Driven by the Owner picker on the Command Center. A blank picker counts as All people.")
+write_cell(ss, TAB_LISTS, 10, 1, "Dropdown sources")
 write_block(ss, TAB_LISTS, 11, 1, rbind(c("Status", "Priority", "Priority weight", "Owner", "Workstream", "Owner view options")))
 write_block(ss, TAB_LISTS, 12, 1, matrix(STATUSES, ncol = 1))
 write_block(ss, TAB_LISTS, 12, 2, data.frame(PRIORITIES, PRIO_W))        # data.frame keeps the weights numeric
@@ -241,15 +268,18 @@ write_cell(ss, TAB_LISTS, 12, 6, ALL_LABEL)
 write_block(ss, TAB_LISTS, 13, 6, matrix(sprintf("=D%d", 12:18), ncol = 1))
 write_cell(ss, TAB_LISTS, 20, 1, sprintf("The lists hold %d owners and %d workstreams, set in the build script (OWNERS, WORKSTREAMS): adding one means editing the script and rerunning it.",
                                          length(OWNERS), length(WORKSTREAMS)))
-write_cell(ss, TAB_LISTS, 21, 1, "CHART DATA (formulas, do not edit)")
+write_cell(ss, TAB_LISTS, 21, 1, "Chart data (formulas, do not edit)")
 write_block(ss, TAB_LISTS, BD_HDR, 1, rbind(c("Status (count)", "Tasks")))
-# The doughnut has no slice labels in the API, so its legend label carries the live count: "Done  (14)"
+# The status bar's legend label carries the live count: "Done  (14)"
 write_block(ss, TAB_LISTS, BD_ROW1, 1, cbind(sprintf('=A%d&"  ("&B%d&")"', 12:15, BD_ROW1:(BD_ROW1 + 3L)),
   sprintf('=COUNTIFS(%s,A%d,%s)', tr("status"), 12:15, IN_VIEW)))
 write_block(ss, TAB_LISTS, BD_HDR, 4, rbind(c("Workstream", sprintf("=A%d", 12:15))))
 ws_rows <- BD_ROW1:(BD_ROW1 + length(WORKSTREAMS) - 1L)
 write_block(ss, TAB_LISTS, BD_ROW1, 4, cbind(sprintf("=E%d", 12:16), sapply(5:8, function(cc)
   sprintf('=COUNTIFS(%s,$D%d,%s,%s$%d,%s)', tr("ws"), ws_rows, tr("status"), col_letter(cc), BD_HDR, IN_VIEW))))
+# The same counts as one row (series = statuses) for the 100% status bar on the Command Center
+write_block(ss, TAB_LISTS, ST_HDR, 4, rbind(c("Status", sprintf("=A%d", BD_ROW1:(BD_ROW1 + 3L))),
+                                            c("All tasks", sprintf("=B%d", BD_ROW1:(BD_ROW1 + 3L)))))
 write_block(ss, TAB_LISTS, BD_HDR, 10, rbind(c("Week start", "Week", "Planned", "Actual (reconstructed)")))
 wk_rows <- BD_ROW1:BD_WK_LAST
 fp_expr <- "(d>=du)+(d>st)*(d<du)*(d-st)/((du-st)*(du>st)+(du<=st))"           # share of a task planned complete at date d
@@ -270,7 +300,7 @@ write_cell(ss, TAB_LISTS, BD_ROW1, 13, sprintf(paste0(
   BD_ROW1, BD_WK_LAST, BD_ROW1, BD_WK_LAST, ASOF_REF, let_base, tr("pct"), tr("status"), ASOF_REF, fp_expr))
 
 # How risk is scored: the weights the Tasks!O formula reads (inputs), below the chart data
-write_cell(ss, TAB_LISTS, LW_BAR, 1, "HOW RISK IS SCORED (0 to 100)")
+write_cell(ss, TAB_LISTS, LW_BAR, 1, "How risk is scored (0 to 100)")
 write_block(ss, TAB_LISTS, LW1, 1, data.frame(
   c("Points per priority weight", "Schedule-gap weight", "Overdue bonus", "Blocked bonus"), unname(RISK_W),
   c("Priority points = this x the Priority weight in the table above.",
@@ -281,7 +311,7 @@ write_cell(ss, TAB_LISTS, LW_DEF, 1, paste0("Risk score = priority points + sche
   sprintf("Done tasks score 0. At or above the At-risk threshold (row %d) a task is flagged At risk.", THR_ROW)))
 
 # Workload limits: the two numbers the Workload tab reads (inputs)
-write_cell(ss, TAB_LISTS, WLD_BAR, 1, "WORKLOAD LIMITS")
+write_cell(ss, TAB_LISTS, WLD_BAR, 1, "Workload limits")
 write_block(ss, TAB_LISTS, WLD1, 1, data.frame(
   c("Overload above (weeks)", "Load bar full at (weeks)"), c(OVERLOAD_WEEKS, LOAD_BAR_WEEKS),
   c("A person whose hours left need more weeks than this turns red on the Workload tab (number and bar).",
@@ -290,7 +320,7 @@ write_block(ss, TAB_LISTS, WLD1, 1, data.frame(
 # ---- Tasks -------------------------------------------------------------------
 write_cell(ss, TAB_TASKS, 1, 1, "Tasks (sample data)")
 write_cell(ss, TAB_TASKS, 2, 1, "Input")
-write_cell(ss, TAB_TASKS, 2, 2, paste0("Blue text is an input you can edit. Black text is a formula (editing it shows a warning). Slate headers are formula columns. ",
+write_cell(ss, TAB_TASKS, 2, 2, paste0("Blue cells are inputs you can edit. Black text is a formula (editing it shows a warning). ",
   "Done rows turn grey. To add a task, type an ID and its inputs in the next empty row: the formulas are ready down to row ", T_AGG, "."))
 hdr_tasks <- c("ID", "Task", "Workstream", "Owner", "Priority", "Status", "Start", "Due", "% done", "Progress",
                "Est. hours", "Hours left", "Days left", "Overdue", "Risk score", "Health")
@@ -300,8 +330,10 @@ write_block(ss, TAB_TASKS, T_ROW1, 1, data.frame(tk$id, tk$task, tk$workstream, 
 write_block(ss, TAB_TASKS, T_ROW1, 11, matrix(tk$est, ncol = 1))
 rf <- T_ROW1:T_AGG                                      # formula rows: the sample tasks plus the empty rows ready for new ones
 guard <- function(f) paste0('=IF($A', rf, '="","",', f, ')')   # empty ID -> empty row (no false "Overdue", no negative days)
+# progress on a grey track: accent while open, the warning mark when blocked, grey once done
 bar_f <- vapply(rf, function(r) fraw(f_sparkline(sprintf("{I%d,1-I%d}", r, r), list(charttype = "bar",
-  color1 = I(sprintf('IF(F%d="Done","#18A957",IF(F%d="Blocked","#F5A524","#2457C5"))', r, r)), color2 = "#E3E8F2"))), "")
+  color1 = I(sprintf('IF(F%d="Done","%s",IF(F%d="Blocked","%s","%s"))', r, hx(ST_COL$Done), r, hx(COL_WARNING), hx(COL_ACCENT))),
+  color2 = hx(COL_SEP_SUBTLE)))), "")
 write_block(ss, TAB_TASKS, T_ROW1, 10, matrix(guard(bar_f), ncol = 1))
 write_block(ss, TAB_TASKS, T_ROW1, 12, cbind(
   guard(sprintf('IF(F%d="Done",0,K%d*(1-I%d))', rf, rf, rf)),
@@ -317,11 +349,11 @@ write_block(ss, TAB_TASKS, T_ROW1, 12, cbind(
 
 # ---- Timeline ----------------------------------------------------------------
 write_cell(ss, TAB_TL, 1, 1, "Timeline (sample data)")
-write_cell(ss, TAB_TL, 2, 1, "Weekly Gantt view. Bars are drawn by conditional formatting from each task's start and due dates, colored by status. The amber column is the as-of week.")
+write_cell(ss, TAB_TL, 2, 1, "Weekly Gantt view, drawn by conditional formatting from each task's start and due dates. The grey column is the as-of week.")
 write_cell(ss, TAB_TL, 3, 2, "As-of date (from Lists)")
 write_cell(ss, TAB_TL, 3, 3, sprintf("=%s", ASOF_REF))
-TL_KEY <- TL_WN - 7L                                    # colour key: four 2-column chips on row 2, right-aligned to the grid
-for (i in seq_along(STATUSES)) write_cell(ss, TAB_TL, 2, TL_KEY + 2L * (i - 1L), STATUSES[i])
+TL_KEY <- TL_WN - 11L                                   # colour key on row 2: a swatch cell (the bar fill) and its label, x4
+for (i in seq_along(STATUSES)) write_cell(ss, TAB_TL, 2, TL_KEY + 3L * (i - 1L) + 1L, STATUSES[i])
 write_block(ss, TAB_TL, TL_HDR, 1, rbind(c("ID", "Task", "Owner", "Status", "Start", "Due")))
 write_cell(ss, TAB_TL, TL_HDR, TL_W1, sprintf("=%s", START_REF))
 write_block(ss, TAB_TL, TL_HDR, TL_W1 + 1L, rbind(sprintf("=%s4+7", sapply(TL_W1:(TL_WN - 1L), col_letter))))
@@ -331,9 +363,14 @@ tcols <- c("A", "B", "D", "F", "G", "H")
 write_block(ss, TAB_TL, TL_ROW1, 1, sapply(tcols, function(cl) sprintf('=IF(Tasks!$A%d="","",Tasks!%s%d)', rf, cl, rf)))
 
 # ---- Workload ----------------------------------------------------------------
-write_cell(ss, TAB_WL, 1, 2, "Workload (sample data)")
-write_cell(ss, TAB_WL, 2, 2, "Who is carrying what. Everything is a formula on the Tasks tab except the blue capacity inputs.")
-write_cell(ss, TAB_WL, 4, 2, "TASKS BY OWNER AND STATUS")
+w_rng <- function(cl) sprintf("$%s$%d:$%s$%d", cl, WL_T1_ROW1, cl, WL_T1_ROWN)
+write_cell(ss, TAB_WL, 2, 2, "Workload")
+write_cell(ss, TAB_WL, 3, 2, sprintf(paste0('=LET(w,%s,lim,%s,n,COUNTIF(w,">"&lim),IF(COUNT(w)=0,"No capacity is set.",',
+  'INDEX(%s,MATCH(MAX(w),w,0))&" has the longest queue: "&TEXT(MAX(w),"0.0")&" weeks of work at current capacity; "&',
+  'IF(n=0,"nobody is",n&" of "&ROWS(w)&IF(n=1," person is"," people are"))&" over the "&lim&"-week limit."))'),
+  w_rng("K"), OVERLOAD_REF, w_rng("B")))
+write_cell(ss, TAB_WL, 4, 2, "Sample data · every figure is a formula on the Tasks tab except the blue capacity inputs · Done tasks carry no hours")
+write_cell(ss, TAB_WL, WL_T1_HDR - 1L, 2, "Tasks by owner and status")
 write_block(ss, TAB_WL, WL_T1_HDR, 2, rbind(c("Owner", sprintf("=Lists!$A$%d", 12:15), "Total", "Overdue", "Hours left",
                                          "Capacity (h/wk)", "Weeks of work", sprintf('="Load bar ("&%s&" weeks = full)"', LOADBAR_REF))))
 ow_r <- WL_T1_ROW1:WL_T1_ROWN
@@ -347,11 +384,11 @@ write_block(ss, TAB_WL, WL_T1_ROW1, 2, data.frame(                              
   sapply(ow_r, function(rr) f_safe_div(sprintf("I%d", rr), sprintf("J%d", rr))),
   # bar = weeks of work on a fixed scale (the Lists load-bar input); red above the Lists overload limit, like the number beside it
   vapply(ow_r, function(rr) f_sparkline(sprintf("K%d", rr), list(charttype = "bar", max = I(LOADBAR_REF),
-    color1 = I(sprintf('IF(K%d>%s,"#E5484D","#2457C5")', rr, OVERLOAD_REF)), color2 = "#E3E8F2"), iferror = TRUE), "")))
+    color1 = I(sprintf('IF(K%d>%s,"%s","%s")', rr, OVERLOAD_REF, hx(COL_NEGATIVE), hx(COL_ACCENT))), color2 = hx(COL_SEP_SUBTLE)), iferror = TRUE), "")))
 write_block(ss, TAB_WL, WL_T1_TOT, 2, rbind(c("Total",
   sapply(3:10, function(cc) sprintf("=SUM(%s%d:%s%d)", col_letter(cc), WL_T1_ROW1, col_letter(cc), WL_T1_ROWN)),
   f_safe_div(sprintf("I%d", WL_T1_TOT), sprintf("J%d", WL_T1_TOT)), NA)))
-write_cell(ss, TAB_WL, WL_T2_HDR - 1L, 2, "HOURS REMAINING BY OWNER AND STATUS")
+write_cell(ss, TAB_WL, WL_T2_HDR - 1L, 2, "Hours remaining by owner and status")
 write_block(ss, TAB_WL, WL_T2_HDR, 2, rbind(c("Owner", sprintf("=Lists!$A$%d", 12:14), "Total")))
 ow2 <- WL_T2_ROW1:WL_T2_ROWN
 write_block(ss, TAB_WL, WL_T2_ROW1, 2, cbind(
@@ -360,65 +397,70 @@ write_block(ss, TAB_WL, WL_T2_ROW1, 2, cbind(
   sprintf("=SUM(C%d:E%d)", ow2, ow2)))
 write_block(ss, TAB_WL, WL_T2_TOT, 2, rbind(c("Total", sapply(3:6, function(cc)
   sprintf("=SUM(%s%d:%s%d)", col_letter(cc), WL_T2_ROW1, col_letter(cc), WL_T2_ROWN)))))
-write_cell(ss, TAB_WL, WL_T2_TOT + 2L, 2, sprintf(paste0('="Capacity is an input. Weeks of work = hours left / capacity; more than "&%s&" weeks turns red ',
-  '(number and bar, total row included; the limit is an input on Lists). Done tasks carry no hours. Tasks with no owner count on the Command Center only."'), OVERLOAD_REF))
+write_cell(ss, TAB_WL, WL_NOTE, 2, sprintf('="Note: capacity is an input. Weeks of work = hours left / capacity; more than "&%s&" weeks turns red (number and bar, total row included)."', OVERLOAD_REF))
+write_cell(ss, TAB_WL, WL_NOTE + 1L, 2, "The limit and the load-bar scale are inputs on Lists. Tasks with no owner count on the Command Center only.")
 
 # ---- Command Center ----------------------------------------------------------
-write_cell(ss, TAB_CC, 1, 2, "Ops Command Center - Sample Data")
-write_cell(ss, TAB_CC, 2, 2, sprintf('="Sample data  |  as of "&TEXT(%s,"mmm d, yyyy")&"  |  every number is a live formula"', ASOF_REF))
-write_cell(ss, TAB_CC, 1, 11, "Built with r-googlesheets4")     # becomes a link chip in the last batch
-write_cell(ss, TAB_CC, 2, 9, "Pick owner view")
-write_cell(ss, TAB_CC, 2, 11, ALL_LABEL)
 cnt_status <- function(s) sprintf('COUNTIFS(%s,%s,"%s")', IN_VIEW, tr("status"), s)
-kpi_labels <- c("TOTAL TASKS", "% DONE", "OVERDUE", "BLOCKED", "HOURS REMAINING", "ON TRACK")
-kpi_cols   <- seq(2L, 12L, by = 2L)
-kpi_vals <- c(
-  sprintf("=COUNTIFS(%s)", IN_VIEW),
-  f_safe_div(cnt_status("Done"), "B5"),
+# Blocked wins over Overdue in the Health column, so a task that is both is counted in both: the finding and the sub-line say so
+OVER_BLOCKED <- sprintf('COUNTIFS(%s,%s,"Overdue",%s,"Blocked")', IN_VIEW, tr("over"), tr("status"))
+bd_col <- function(cl) sprintf("Lists!$%s$%d:$%s$%d", cl, BD_ROW1, cl, BD_WK_LAST)
+# hours left minus the plan, at the last actual point (the week start on or before the as-of date)
+vs_plan <- sprintf('LET(k,COUNT(%s),IF(k=0,"",INDEX(%s,k)-INDEX(%s,k)))', bd_col("M"), bd_col("M"), bd_col("L"))
+write_cell(ss, TAB_CC, 2, 2, sprintf('="Ops command center, "&IF(%s="*","all people",%s)', CRIT, CRIT))
+write_cell(ss, TAB_CC, CTRL[1], CTRL[2] - 1L, "Owner")
+write_cell(ss, TAB_CC, CTRL[1], CTRL[2], ALL_LABEL)
+# The finding: one live sentence built from the KPIs and the top row of the Needs-attention table
+write_cell(ss, TAB_CC, 3, 2, sprintf(paste0('=IF(%1$s=0,"No tasks in this view.",TEXT(%2$s,"0%%")&" of tasks are done or on schedule; "&',
+  '%3$s&" overdue"&IF(%11$s>0," ("&%11$s&" also blocked)","")&", "&%4$s&" blocked and "&%10$s&" at risk. "&IF(%5$s="","No open tasks remain.",IF(AND(%8$s<%9$s,%3$s+%4$s=0),',
+  '"Nothing at risk: the highest risk score is "&%8$s&" of 100 (flagged from "&%9$s&").",',
+  '"Top risk: "&%5$s&" ("&%6$s&", "&IF(%7$s="","no owner",%7$s)&"), risk score "&%8$s&" of 100.")))'),
+  KV_TOTAL, kv(1), kv(3), kv(4), att(2), att(3), att(5), att(10), THR_REF, kv(5), OVER_BLOCKED))
+write_cell(ss, TAB_CC, 4, 2, sprintf(paste0('="Sample data · as of "&TEXT(%1$s,"mmm d, yyyy")&" · "&%2$s&IF(%2$s=1," task "," tasks ")&',
+  'IF(%3$s="*","across "&COUNTA(%4$s)&" people","assigned to "&%3$s)&" · every number is a live formula · built %5$s · View only? File > Make a copy to use the owner picker"'),
+  ASOF_REF, KV_TOTAL, CRIT, L_OWNER, Sys.Date()))
+k_lab <- c("On track", "Done", "Overdue", "Blocked", "At risk", "Hours left")
+k_val <- c(
+  f_safe_div(sprintf('(COUNTIFS(%s,%s,"On track")+%s)', IN_VIEW, tr("health"), cnt_status("Done")), KV_TOTAL),
+  f_safe_div(cnt_status("Done"), KV_TOTAL),
   sprintf('=COUNTIFS(%s,%s,"Overdue")', IN_VIEW, tr("over")),
   sprintf("=%s", cnt_status("Blocked")),
-  sprintf("=SUMIFS(%s,%s)", tr("left"), IN_VIEW),
-  f_safe_div(sprintf('(COUNTIFS(%s,%s,"On track")+%s)', IN_VIEW, tr("health"), cnt_status("Done")), "B5"))
-kpi_caps <- c(
-  sprintf('=IF(%s="*","across "&COUNTA(%s)&" people","assigned to "&%s)', CRIT, L_OWNER, CRIT),
-  sprintf('=%s&" of "&B5&" tasks"', cnt_status("Done")),
-  # Blocked wins over Overdue in the Health column, so a task that is both is counted in both cards: say so
-  sprintf('=IF(%1$s>0,"past due, "&%1$s&" also blocked","past due and not done")',
-          sprintf('COUNTIFS(%s,%s,"Overdue",%s,"Blocked")', IN_VIEW, tr("over"), tr("status"))),
-  "waiting on a dependency",
-  sprintf('="of "&TEXT(SUMIFS(%s,%s),"#,##0")&" h estimated"', tr("est"), IN_VIEW),
-  "done or on schedule")
-for (k in 1:6) {
-  write_cell(ss, TAB_CC, 4, kpi_cols[k], kpi_labels[k]); write_cell(ss, TAB_CC, 5, kpi_cols[k], kpi_vals[k])
-  write_cell(ss, TAB_CC, 6, kpi_cols[k], kpi_caps[k])
+  sprintf('=COUNTIFS(%s,%s,"At risk")', IN_VIEW, tr("health")),
+  sprintf("=SUMIFS(%s,%s)", tr("left"), IN_VIEW))
+k_sub <- c(
+  "done or on schedule",
+  sprintf('=%s&" of "&%s&" tasks"', cnt_status("Done"), KV_TOTAL),
+  sprintf('=IF(%1$s>0,%1$s&" also blocked","past due, not done")', OVER_BLOCKED),
+  "waiting on others",
+  sprintf('="score "&%s&"+, not late or blocked"', THR_REF),   # Overdue and Blocked take precedence in Health
+  paste0("=", vs_plan))
+for (k in seq_along(K_COLS)) {
+  write_cell(ss, TAB_CC, K_ROW, K_COLS[k], k_lab[k]); write_cell(ss, TAB_CC, K_VAL, K_COLS[k], k_val[k])
+  write_cell(ss, TAB_CC, K_VAL + 1L, K_COLS[k], k_sub[k])
 }
-# One-line takeaway under the cards: reads the top row of the Needs-attention table (row 47) and the KPI cells F5 / H5
-write_cell(ss, TAB_CC, 7, 2, sprintf(paste0('=IF(C47="","No open tasks in this view.",IF(AND(K47<%s,F5+H5=0),',
-  '"Nothing at risk in this view: the highest risk score is "&K47&"/100 (flagged from "&%s&"), nothing overdue or blocked",',
-  '"Top risk right now: "&C47&" ("&B47&"), owner "&IF(I47="","(none)",I47)&", risk score "&K47&"/100   |   "&F5&" overdue   |   "&H5&" blocked"))'),
-  THR_REF, THR_REF))
-write_cell(ss, TAB_CC, 8, 2, '="STATUS AND WORKSTREAMS   |   "&B5&IF(B5=1," task"," tasks")&" in view"')
-# Burn-down verdict: last actual point (week start on or before the as-of date) against the plan for the same week
-bd_col <- function(cl) sprintf("Lists!$%s$%d:$%s$%d", cl, BD_ROW1, cl, BD_WK_LAST)
-write_cell(ss, TAB_CC, 26, 2, sprintf(paste0('=LET(k,COUNT(%s),"BURN-DOWN: HOURS REMAINING, PLANNED VS ACTUAL"&IF(k=0,"",',
-  'LET(x,INDEX(%s,k)-INDEX(%s,k),"   |   "&IF(ROUND(x,0)>0,"Behind plan by "&TEXT(x,"#,##0")&" h",',
-  'IF(ROUND(x,0)<0,"Ahead of plan by "&TEXT(-x,"#,##0")&" h","On plan"))&" at "&TEXT(INDEX(%s,k),"mmm d"))))'),
+write_cell(ss, TAB_CC, K_VAL + 2L, 2, sprintf('="Hours left are of "&TEXT(SUMIFS(%s,%s),"#,##0")&" h estimated, compared with the planned burn-down for "&TEXT(%s,"mmm d")&": red is behind plan, green is ahead."',
+                                              tr("est"), IN_VIEW, ASOF_REF))
+write_cell(ss, TAB_CC, ST_SEC, 2, "Status by workstream")
+write_cell(ss, TAB_CC, ST_SEC, 11, sprintf('=%1$s&IF(%1$s=1," task"," tasks")&" in view"', KV_TOTAL))
+write_cell(ss, TAB_CC, BD_SEC, 2, "Burn-down: hours remaining")
+write_cell(ss, TAB_CC, BD_SEC, 11, sprintf(paste0('=LET(k,COUNT(%s),IF(k=0,"",LET(x,INDEX(%s,k)-INDEX(%s,k),',
+  'IF(ROUND(x,0)>0,"Behind plan by "&TEXT(x,"#,##0")&" h",IF(ROUND(x,0)<0,"Ahead of plan by "&TEXT(-x,"#,##0")&" h","On plan"))&" at "&TEXT(INDEX(%s,k),"mmm d"))))'),
   bd_col("M"), bd_col("M"), bd_col("L"), bd_col("J")))
-write_cell(ss, TAB_CC, 43, 2, paste0("Planned = straight-line plan between each task's start and due date. Actual = hours left, reconstructed ",
-  "by assuming steady progress from each task's start to its current % complete. The actual line stops at the as-of week."))
-write_cell(ss, TAB_CC, 45, 2, "NEEDS ATTENTION: TOP 5 OPEN TASKS BY RISK SCORE")
-write_block(ss, TAB_CC, 46, 2, rbind(c("ID", "Task", NA, NA, NA, "Workstream", NA, "Owner", "Due", "Risk", "Health")))
+write_cell(ss, TAB_CC, BD_NOTE, 2, "Planned: a straight-line plan between each task's start and due date. The actual line stops at the as-of week.")
+write_cell(ss, TAB_CC, BD_NOTE + 1L, 2, "Actual: hours left, reconstructed by assuming steady progress from each task's start to its current % complete.")
+write_cell(ss, TAB_CC, ATT_SEC, 2, "Needs attention: top 5 open tasks by risk score")
+ATT_COLS <- list(c(2, 2), c(3, 1), c(4, 3), c(5, 4), c(6, 8), c(8, 9), c(9, 13), c(10, 15), c(11, 16))   # dashboard col, Tasks col
+write_block(ss, TAB_CC, ATT_HDR, 2, rbind(c("Task", "ID", "Workstream", "Owner", "Due", NA, "% done", "Days left", "Risk", "Health")))
 att_formula <- function(i, col) sprintf(paste0('=IFERROR(INDEX(SORT(FILTER(Tasks!$A$%d:$P$%d,%s<>"",%s<>"Done",%s),15,FALSE,8,TRUE),%d,%d),"")'),
                                         T_ROW1, T_AGG, tr("id"), tr("status"), OWN_SCOPE, i, col)
-for (i in 1:5) for (cc in list(c(2, 1), c(3, 2), c(7, 3), c(9, 4), c(10, 8), c(11, 15), c(12, 16)))
-  write_cell(ss, TAB_CC, 46 + i, cc[1], att_formula(i, cc[2]))
-write_cell(ss, TAB_CC, 52, 2, sprintf("Risk score 0-100 = priority + schedule gap + overdue and blocked bonuses (weights on Lists, row %d).", LW_BAR))
-write_cell(ss, TAB_CC, 52, 10, "Open the full task list")         # becomes a link in the last batch
-write_cell(ss, TAB_CC, 53, 2, "ABOUT THIS SAMPLE")
-write_cell(ss, TAB_CC, 54, 2, paste0("Every name, task, date and hour here is synthetic, generated in R with a fixed random seed. ",
-  "Pick a person in Owner view to filter this page, or edit the blue inputs on the Tasks tab (it also has an Owner slicer and saved ",
-  "views under Data > Filter views) and everything recalculates. To add a task, fill the next empty row on Tasks: its formulas are ready. ",
-  sprintf("The Tasks filter and Owner slicer stop at row %d, so widen them (Data > Create a filter) after adding rows; the saved views already cover them.", T_ROWN)))
+for (i in 1:5) for (cc in ATT_COLS) write_cell(ss, TAB_CC, ATT_ROW1 + i - 1L, cc[1], att_formula(i, cc[2]))
+write_cell(ss, TAB_CC, ATT_NOTE, 2, sprintf("Risk score 0-100 = priority + schedule gap + overdue and blocked bonuses (weights on Lists, row %d). Days left below 0 are days late.", LW_BAR))
+write_cell(ss, TAB_CC, ABOUT, 2, "About this sample")
+about <- c("Sample data: every name, task, date and hour here is synthetic, generated in R with a fixed random seed.",
+           "Pick a person in Owner (top right) to filter this page, or edit the blue cells on the Tasks tab, and everything recalculates.",
+           "The Tasks tab also has an Owner slicer and saved views under Data > Filter views. To add a task, fill the next empty row on Tasks: its formulas are ready.",
+           sprintf("The Tasks filter and Owner slicer stop at row %d, so widen them (Data > Create a filter) after adding rows; the saved views already cover them.", T_ROWN))
+for (k in seq_along(about)) write_cell(ss, TAB_CC, ABOUT + k, 2, about[k])   # the two credit lines follow, written as links
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 2: flush, then one formatting batch per tab
@@ -426,244 +468,174 @@ write_cell(ss, TAB_CC, 54, 2, paste0("Every name, task, date and hour here is sy
 flush_writes(ss, strict = TRUE)
 Sys.sleep(4)
 
-# This sheet's style vocabulary (body, title, header band, section bar, input and fixed cells): thin presets over the skill's
-# apply_style() / fmt_cells() so every tab reads the same. Showcase look, not a skill gap.
-body_fmt <- function(sid, rows, cols, size = 10) apply_style(sid, 1, rows, 1, cols, STYLE_BODY, font_size = size)
-title_fmt <- function(sid, r, c) apply_style(sid, r, r, c, c, STYLE_BRAND_TITLE, font_size = 20)
-sub_fmt   <- function(sid, r, c) apply_style(sid, r, r, c, c, STYLE_SUBTITLE, font_size = 10, wrap = FALSE)
-band_hdr  <- function(sid, r, c1, c2, bg = COL_BRAND, size = 10)
-  apply_style(sid, r, r, c1, c2, STYLE_BODY_BOLD, font_size = size, font_color = COL_WHITE, bg_color = bg, halign = "CENTER", wrap = TRUE)
-section_bar <- function(sid, r, c1, c2)
-  c(list(apply_style(sid, r, r, c1, c2, STYLE_BODY_BOLD, font_size = 11, font_color = COL_WHITE, bg_color = COL_BRAND, halign = "LEFT"),
-         fmt_row_height(sid, r, r, 26L)))
-input_cell <- function(sid, r1, r2, c1, c2, ...) fmt_cells(sid, r1, r2, c1, c2, font_color = C_INPUT, bg_color = C_INPUT_BG, ...)
-fixed_cell <- function(sid, r1, r2, c1, c2, ...) fmt_cells(sid, r1, r2, c1, c2, font_color = C_GREY_FG, bg_color = C_GREY_BG, ...)
-thin <- list(style = "SOLID", color = C_GRID)
-
 # ---- Lists -------------------------------------------------------------------
 fmt_lists <- function(sid) {
-  c(list(fmt_gridlines(sid, TRUE), fmt_freeze(sid, rows = 2L), fmt_tab_color(sid, hex_to_color("9AA5B8"))),
-    fmt_col_widths(sid, c(215, 130, 130, 150, 130, 150, 100, 100, 30, 100, 80, 90, 120)),
-    list(body_fmt(sid, 60L, 13), title_fmt(sid, 1, 1), sub_fmt(sid, 2, 1), fmt_row_height(sid, 1, 1, 34L)),
-    section_bar(sid, 4, 1, 6), section_bar(sid, 10, 1, 6), section_bar(sid, 21, 1, 13), section_bar(sid, LW_BAR, 1, 6),
-    section_bar(sid, WLD_BAR, 1, 6),
-    list(apply_style(sid, 5, 8, 1, 1, STYLE_BODY_BOLD, font_size = 10),
-         input_cell(sid, 5, 7, 2, 2, bold = TRUE, halign = "CENTER"),
-         fmt_cells(sid, 5, 6, 2, 2, numfmt = NF_DATE), fmt_cells(sid, 7, 7, 2, 2, numfmt = NF_NUM0),
-         fmt_cells(sid, 8, 8, 2, 2, halign = "CENTER", font_color = COL_MUTED_TEXT),
-         apply_style(sid, 5, 8, 3, 3, STYLE_SUBTITLE, font_size = 9, wrap = FALSE),
-         band_hdr(sid, 11, 1, 5, COL_BRAND), band_hdr(sid, 11, 6, 6, C_SLATE), fmt_row_height(sid, 11, 11, 38L),
-         # only the priority weights are inputs here: every name is matched literally by formulas and Tasks rows (grey = fixed)
-         fixed_cell(sid, 12, 15, 1, 2), fixed_cell(sid, 12, 18, 4, 4), fixed_cell(sid, 12, 16, 5, 5), fixed_cell(sid, 12, 19, 6, 6),
-         input_cell(sid, 12, 15, 3, 3),
-         fmt_cells(sid, 12, 15, 3, 3, halign = "CENTER"),
-         apply_style(sid, 20, 20, 1, 1, STYLE_SUBTITLE, font_size = 9, wrap = FALSE),
-         # how risk is scored: label, input weight, note
-         apply_style(sid, LW1, LW1 + 3L, 1, 1, STYLE_BODY_BOLD, font_size = 10),
-         input_cell(sid, LW1, LW1 + 3L, 2, 2, bold = TRUE, halign = "CENTER"),
-         fmt_cells(sid, LW1, LW1 + 3L, 2, 2, numfmt = NF_NUM0),
-         apply_style(sid, LW1, LW1 + 3L, 3, 3, STYLE_SUBTITLE, font_size = 9, wrap = FALSE),
-         apply_style(sid, LW_DEF, LW_DEF, 1, 1, STYLE_SUBTITLE, font_size = 9, wrap = FALSE),
-         # workload limits: label, input, note
-         apply_style(sid, WLD1, WLD_LAST, 1, 1, STYLE_BODY_BOLD, font_size = 10),
-         input_cell(sid, WLD1, WLD_LAST, 2, 2, bold = TRUE, halign = "CENTER"),
-         fmt_cells(sid, WLD1, WLD_LAST, 2, 2, numfmt = NF_NUM0),
-         apply_style(sid, WLD1, WLD_LAST, 3, 3, STYLE_SUBTITLE, font_size = 9, wrap = FALSE),
-         fmt_borders(sid, 12, 19, 1, 6, inner_h = thin, bottom = thin),
-         band_hdr(sid, BD_HDR, 1, 2, C_SLATE), band_hdr(sid, BD_HDR, 4, 8, C_SLATE), band_hdr(sid, BD_HDR, 10, 13, C_SLATE),
-         fmt_row_height(sid, BD_HDR, BD_HDR, 36L),
-         fmt_cells(sid, BD_ROW1, BD_WK_LAST, 1, 13, halign = "LEFT"),
-         fmt_cells(sid, BD_ROW1, BD_ROW1 + 4L, 5, 8, halign = "CENTER"),
-         fmt_cells(sid, BD_ROW1, BD_ROW1 + 3L, 2, 2, halign = "CENTER"),
-         fmt_cells(sid, BD_ROW1, BD_WK_LAST, 10, 10, numfmt = NF_DSHORT, halign = "CENTER"),
-         fmt_cells(sid, BD_ROW1, BD_WK_LAST, 11, 11, halign = "CENTER"),
-         fmt_cells(sid, BD_ROW1, BD_ROW1 + 4L, 5, 8, numfmt = list(type = "NUMBER", pattern = "0;-0;;@"), halign = "CENTER"),   # zeros blank: no "0" data labels
-         fmt_cells(sid, BD_ROW1, BD_WK_LAST, 12, 13, numfmt = NUMFMT_INT, halign = "CENTER"),
-         fmt_borders(sid, BD_ROW1, BD_ROW1 + 3L, 1, 2, inner_h = thin, bottom = thin),
-         fmt_borders(sid, BD_ROW1, BD_ROW1 + 4L, 4, 8, inner_h = thin, bottom = thin),
-         fmt_borders(sid, BD_ROW1, BD_WK_LAST, 10, 13, inner_h = thin, bottom = thin)))
+  b <- new_batch()
+  b$push(fmt_tab_base(sid, 60L, 13L, "data", title_row = NULL, inputs = TRUE, freeze_rows = 2L))
+  b$push(fmt_col_widths(sid, c(215, 130, 130, 150, 130, 150, 100, 100, 30, 100, 80, 90, 120)))
+  b$push(title_a(sid))
+  for (r in c(4L, 10L, LW_BAR, WLD_BAR)) b$push(fmt_section(sid, r, 1, 6, header = FALSE))
+  b$push(fmt_section(sid, 21, 1, 13, header = FALSE))
+  # settings: label, value, note
+  b$push(fmt_table_body(sid, 5, 8, 1, 3))
+  b$push(apply_style(sid, 5, 7, 2, 2, STYLE_INPUT, halign = "RIGHT"))
+  b$push(fmt_cells(sid, 5, 6, 2, 2, numfmt = NF_DATE)); b$push(fmt_cells(sid, 7, 7, 2, 2, numfmt = NF_NUM0))
+  b$push(fmt_cells(sid, 8, 8, 2, 2, halign = "RIGHT", font_color = COL_TEXT_3))
+  b$push(apply_style(sid, 5, 8, 3, 3, STYLE_NOTE))
+  # dropdown sources: only the priority weights are inputs; every name is matched literally by formulas and Tasks rows (grey = fixed)
+  b$push(col_header(sid, 11, 1, 6, num = 3))
+  b$push(fmt_table_body(sid, 12, 19, 1, 6))
+  for (g in list(c(15, 1, 2), c(18, 4, 4), c(16, 5, 5), c(19, 6, 6))) b$push(apply_style(sid, 12, g[1], g[2], g[3], STYLE_GRAYED_OUT))
+  b$push(apply_style(sid, 12, 15, 3, 3, STYLE_INPUT, halign = "RIGHT"))
+  b$push(apply_style(sid, 20, 20, 1, 1, STYLE_NOTE))
+  # chart data
+  for (g in list(c(1, 2, BD_ROW1 + 3L), c(4, 8, BD_ROW1 + 4L), c(10, 13, BD_WK_LAST))) {
+    b$push(col_header(sid, BD_HDR, g[1], g[2], num = if (g[1] == 10) 12:13 else (g[1] + 1L):g[2]))
+    b$push(fmt_table_body(sid, BD_ROW1, g[3], g[1], g[2], numeric_cols = if (g[1] == 10) 12:13 else (g[1] + 1L):g[2],
+                          numfmt = if (g[1] == 10) NUMFMT_INT else NF_ZERO_BLANK))   # zeros blank: no "0" data labels
+  }
+  b$push(fmt_row_height(sid, BD_HDR, BD_HDR, 36L))
+  b$push(col_header(sid, ST_HDR, 4, 8, num = 5:8))
+  b$push(fmt_table_body(sid, ST_ROW, ST_ROW, 4, 8, numeric_cols = 5:8, numfmt = NF_ZERO_BLANK))
+  b$push(fmt_cells(sid, BD_ROW1, BD_WK_LAST, 10, 10, numfmt = NF_DSHORT, halign = "LEFT"))
+  # how risk is scored, workload limits: label, input, note
+  for (g in list(c(LW1, LW1 + 3L), c(WLD1, WLD_LAST))) {
+    b$push(fmt_table_body(sid, g[1], g[2], 1, 3))
+    b$push(apply_style(sid, g[1], g[2], 2, 2, STYLE_INPUT, halign = "RIGHT", numfmt = NF_NUM0))
+    b$push(apply_style(sid, g[1], g[2], 3, 3, STYLE_NOTE))
+  }
+  b$push(apply_style(sid, LW_DEF, LW_DEF, 1, 1, STYLE_NOTE))
+  b$get()
 }
 
 # ---- Tasks -------------------------------------------------------------------
 fmt_tasks <- function(sid) {
+  IN_LAST <- T_ROWN + 10L        # the input fill covers the sample rows plus a margin; blue text runs to T_AGG
   b <- new_batch()
-  b$push(c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = T_HDR, cols = 2L), fmt_tab_color(sid, hex_to_color("163A85"))),
-    fmt_col_widths(sid, c(60, 270, 140, 80, 72, 100, 100, 100, 70, 110, 76, 84, 76, 80, 76, 92)),
-    list(body_fmt(sid, T_AGG, 16), title_fmt(sid, 1, 1), sub_fmt(sid, 2, 2),
-         fmt_row_height(sid, 1, 1, 36L), fmt_row_height(sid, 2, 2, 24L), fmt_row_height(sid, T_HDR, T_HDR, 40L),
-         fmt_row_height(sid, T_ROW1, T_AGG, 26L),
-         fmt_cells(sid, 2, 2, 1, 1, font_color = C_INPUT, bold = TRUE, halign = "CENTER"),
-         band_hdr(sid, T_HDR, 1, 9, COL_BRAND), band_hdr(sid, T_HDR, 10, 10, C_SLATE), band_hdr(sid, T_HDR, 11, 11, COL_BRAND),
-         band_hdr(sid, T_HDR, 12, 16, C_SLATE),
-         fmt_cells(sid, T_ROW1, T_AGG, 1, 9, font_color = C_INPUT), fmt_cells(sid, T_ROW1, T_AGG, 11, 11, font_color = C_INPUT),
-         fmt_cells(sid, T_ROW1, T_AGG, 1, 1, halign = "CENTER"), fmt_cells(sid, T_ROW1, T_AGG, 5, 5, halign = "CENTER"),
-         fmt_cells(sid, T_ROW1, T_AGG, 7, 8, numfmt = NF_DATE, halign = "CENTER"), fmt_cells(sid, T_ROW1, T_AGG, 9, 9, numfmt = NUMFMT_PCT_WHOLE, halign = "CENTER"),
-         fmt_cells(sid, T_ROW1, T_AGG, 11, 11, numfmt = NUMFMT_INT, halign = "RIGHT"), fmt_cells(sid, T_ROW1, T_AGG, 12, 12, numfmt = NF_DEC1, halign = "RIGHT"),
-         fmt_cells(sid, T_ROW1, T_AGG, 13, 13, numfmt = NF_NUM0, halign = "CENTER"),
-         fmt_cells(sid, T_ROW1, T_AGG, 14, 16, halign = "CENTER"),
-         fmt_cells(sid, T_ROW1, T_AGG, 15, 15, numfmt = NF_NUM0, halign = "CENTER"),
-         fmt_borders(sid, T_HDR, T_ROWN, 1, 16, bottom = list(style = "SOLID", color = C_GRID), inner_h = thin),
-         fmt_dropdown_range(sid, T_ROW1, T_AGG, 3, 3, paste0("=", L_WS)),
-         fmt_dropdown_range(sid, T_ROW1, T_AGG, 4, 4, paste0("=", L_OWNER)),
-         fmt_dropdown_range(sid, T_ROW1, T_AGG, 5, 5, paste0("=", L_PRIO)),
-         fmt_dropdown_range(sid, T_ROW1, T_AGG, 6, 6, paste0("=", L_STATUS)),
-         fmt_validation(sid, T_ROW1, T_AGG, 9, 9, "NUMBER_BETWEEN", c(0, 1), input_message = "Enter 0% to 100%"),
-         fmt_validation(sid, T_ROW1, T_AGG, 7, 8, "DATE_IS_VALID", input_message = "Enter a date"),
-         fmt_basic_filter(sid, T_HDR, T_ROWN, 1, 16))))
+  b$push(fmt_tab_base(sid, T_AGG, 16L, "data", title_row = NULL, inputs = TRUE, freeze_rows = T_HDR, freeze_cols = 2L))
+  b$push(fmt_col_widths(sid, c(60, 270, 140, 80, 72, 100, 100, 100, 70, 110, 76, 84, 76, 80, 76, 96)))
+  b$push(title_a(sid, 2L))
+  b$push(apply_style(sid, 2, 2, 1, 1, STYLE_INPUT, halign = "CENTER", bold = TRUE))   # the key: this look = an input
+  b$push(col_header(sid, T_HDR, 1, 16, num = c(9, 11:13, 15), ink = TRUE)); b$push(fmt_row_height(sid, T_HDR, T_HDR, 30L))
+  b$push(fmt_row_height(sid, T_ROW1, T_AGG, 24L))
+  b$push(fmt_cells(sid, T_ROW1, T_AGG, 1, 9, font_color = COL_INPUT_FG)); b$push(fmt_cells(sid, T_ROW1, T_AGG, 11, 11, font_color = COL_INPUT_FG))
+  for (g in list(c(1, 9), c(11, 11))) b$push(apply_style(sid, T_ROW1, IN_LAST, g[1], g[2], STYLE_INPUT))
+  b$push(fmt_borders(sid, T_ROW1, IN_LAST, 1, 11, inner_h = list(style = "SOLID", color = COL_WHITE)))   # rows stay readable on the fill
+  b$push(fmt_cells(sid, T_ROW1, T_AGG, 7, 8, numfmt = NF_DATE, halign = "LEFT"))
+  b$push(fmt_cells(sid, T_ROW1, T_AGG, 9, 9, numfmt = NUMFMT_PCT_WHOLE, halign = "RIGHT"))
+  b$push(fmt_cells(sid, T_ROW1, T_AGG, 11, 11, numfmt = NUMFMT_INT, halign = "RIGHT"))
+  b$push(fmt_cells(sid, T_ROW1, T_AGG, 12, 12, numfmt = NF_DEC1, halign = "RIGHT"))
+  b$push(fmt_cells(sid, T_ROW1, T_AGG, 13, 13, numfmt = NF_NUM0, halign = "RIGHT"))
+  b$push(fmt_cells(sid, T_ROW1, T_AGG, 15, 15, numfmt = NF_NUM0, halign = "RIGHT"))
+  b$push(fmt_cells(sid, T_HDR, T_AGG, 14, 14, halign = "CENTER"))   # Overdue: clear of the right-aligned Days left
+  b$push(list(
+    fmt_dropdown_range(sid, T_ROW1, T_AGG, 3, 3, paste0("=", L_WS)),
+    fmt_dropdown_range(sid, T_ROW1, T_AGG, 4, 4, paste0("=", L_OWNER)),
+    fmt_dropdown_range(sid, T_ROW1, T_AGG, 5, 5, paste0("=", L_PRIO)),
+    fmt_dropdown_range(sid, T_ROW1, T_AGG, 6, 6, paste0("=", L_STATUS)),
+    fmt_validation(sid, T_ROW1, T_AGG, 9, 9, "NUMBER_BETWEEN", c(0, 1), input_message = "Enter 0% to 100%"),
+    fmt_validation(sid, T_ROW1, T_AGG, 7, 8, "DATE_IS_VALID", input_message = "Enter a date"),
+    fmt_basic_filter(sid, T_HDR, T_ROWN, 1, 16)))
   # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab).
   # A task with an ID but no owner shows under All people only: flag the empty Owner cell.
-  b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, 4, 4, '=AND($A4<>"",$D4="")', bg_color = hex_to_color("F7B2B2"))
-  # These skip column J (the progress-bar sparkline keeps its own fill): one rule per column block, A:I then K:N.
-  blocks <- function(formula, ...) for (cc in list(c(1L, 9L), c(11L, 14L)))
-    b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, cc[1L], cc[2L], formula, ...)
-  blocks('=$F4="Done"', font_color = C_GREY_FG)
-  b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, 8, 8, '=$N4="Overdue"', bg_color = C_RED_BG, font_color = COL_RED_TEXT, bold = TRUE)
-  blocks('=$F4="Blocked"', bg_color = C_AMB_BG)
-  blocks('=$N4="Overdue"', bg_color = C_RED_BG)
-  b$cf(fmt_cond_color_scale, sid, T_ROW1, T_AGG, 15, 15, COL_WHITE, C_RISK_BG, hex_to_color("F7B2B2"))
-  for (q in list(list("Overdue", C_RED_BG, COL_RED_TEXT), list("Blocked", C_AMB_BG, C_AMB_FG),
-                 list("At risk", C_RISK_BG, C_RISK_FG), list("On track", C_GRN_BG, C_GRN_FG), list("Done", C_GREY_BG, C_GREY_FG)))
-    b$cf(fmt_cond_text_equals, sid, T_ROW1, T_AGG, 16, 16, q[[1]], bg_color = q[[2]], font_color = q[[3]], bold = TRUE)
-  # alternating bands drawn only on rows that hold a task (last, so Blocked / Overdue fills win): new rows band themselves
-  b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, 1, 16, '=AND($A4<>"",MOD(ROW(),2)=1)', bg_color = C_BAND)
+  b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, 4, 4, '=AND($A4<>"",$D4="")', bg_color = STATUS$negative$fill)
+  for (cc in list(c(1L, 9L), c(11L, 14L)))              # skip column J: the progress-bar sparkline keeps its own colours
+    b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, cc[1L], cc[2L], '=$F4="Done"', font_color = COL_TEXT_3)
+  b$cf(fmt_cond_formula, sid, T_ROW1, T_AGG, 8, 8, '=$N4="Overdue"', font_color = COL_NEGATIVE, bold = TRUE)
+  b$cf(fmt_cond_color_scale, sid, T_ROW1, T_AGG, 15, 15, SCALE_HEAT$min_color, SCALE_HEAT$mid_color, SCALE_HEAT$max_color)
+  # Health chips last: colour only where there is risk (On track and Done stay grey text)
+  b$push(fmt_status(sid, T_ROW1, T_AGG, 16, 16, c(Overdue = "negative", Blocked = "warning", "At risk" = "warning"), index = 5L))
   b$get()
 }
 
 # ---- Timeline ----------------------------------------------------------------
 fmt_timeline <- function(sid) {
   b <- new_batch()
-  key <- unlist(lapply(seq_along(STATUSES), function(i) {            # colour key chips, same fills as the bars
-    c1 <- TL_KEY + 2L * (i - 1L)
-    list(fmt_merge(sid, 2, 2, c1, c1 + 1L),
-         apply_style(sid, 2, 2, c1, c1 + 1L, STYLE_BODY_BOLD, font_size = 9, halign = "CENTER", valign = "MIDDLE", wrap = FALSE,
-                     bg_color = hex_to_color(ST_HEX[[STATUSES[i]]]),
-                     font_color = if (STATUSES[i] == "In progress") COL_WHITE else COL_INK),   # white only where it reaches 4.5:1
-         fmt_borders(sid, 2, 2, c1, c1 + 1L, left = list(style = "SOLID_THICK", color = COL_WHITE),
-                     right = list(style = "SOLID_THICK", color = COL_WHITE)))
-  }), recursive = FALSE)
-  b$push(c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = TL_HDR, cols = 2L), fmt_tab_color(sid, hex_to_color("5B8DEF"))),
-    fmt_col_widths(sid, c(52, 220, 72, 84, 70, 70)), fmt_col_widths(sid, rep(50, N_WEEKS), start_col = TL_W1),
-    list(body_fmt(sid, TL_ROWN + 5L, TL_WN), title_fmt(sid, 1, 1), sub_fmt(sid, 2, 1),
-         fmt_row_height(sid, 1, 1, 36L), fmt_row_height(sid, 2, 2, 24L), fmt_row_height(sid, 3, 3, 22L),
-         fmt_row_height(sid, TL_HDR, TL_HDR, 30L),
-         fmt_row_height(sid, TL_ROW1, TL_ROWN, 24L),
-         fmt_cells(sid, 3, 3, 2, 2, halign = "RIGHT", italic = TRUE, font_color = COL_MUTED_TEXT, font_size = 9),
-         fmt_cells(sid, 3, 3, 3, 3, numfmt = NF_DSHORT, halign = "CENTER", bold = TRUE),
-         fmt_cells(sid, 3, 3, TL_W1, TL_WN, halign = "CENTER", font_color = hex_to_color("D97706"), font_size = 12),
-         fmt_cells(sid, TL_HDR, TL_HDR, TL_W1, TL_WN, numfmt = NF_DSHORT),
-         band_hdr(sid, TL_HDR, 1, 6, C_SLATE), band_hdr(sid, TL_HDR, TL_W1, TL_WN, COL_BRAND, size = 9),
-         fmt_cells(sid, TL_ROW1, TL_ROWN, 1, 1, halign = "CENTER"),
-         fmt_cells(sid, TL_ROW1, TL_ROWN, 5, 6, numfmt = NF_DSHORT, halign = "CENTER"),
-         fmt_borders(sid, TL_HDR, TL_ROWD, 1, TL_WN, bottom = thin, inner_h = thin),
-         fmt_borders(sid, TL_ROW1, TL_ROWD, TL_W1, TL_WN, inner_v = list(style = "SOLID", color = hex_to_color("EDF0F6")))),
-    key))
+  b$push(fmt_tab_base(sid, TL_ROWN + 5L, TL_WN, "model", title_row = NULL, freeze_rows = TL_HDR, freeze_cols = 2L))
+  b$push(c(fmt_col_widths(sid, c(52, 220, 72, 84, 70, 70)), fmt_col_widths(sid, rep(50, N_WEEKS), start_col = TL_W1)))
+  b$push(title_a(sid))
+  for (i in seq_along(STATUSES)) {                      # colour key: swatch = the bar fill, then the status name
+    c1 <- TL_KEY + 3L * (i - 1L)
+    b$push(fmt_cells(sid, 2, 2, c1, c1, bg_color = ST_COL[[STATUSES[i]]]))
+    b$push(apply_style(sid, 2, 2, c1 + 1L, c1 + 1L, STYLE_NOTE))
+  }
+  b$push(fmt_row_height(sid, 3, 3, 22L))
+  b$push(apply_style(sid, 3, 3, 2, 2, STYLE_NOTE, halign = "RIGHT"))
+  b$push(fmt_cells(sid, 3, 3, 3, 3, numfmt = NF_DSHORT, halign = "LEFT", bold = TRUE))
+  b$push(fmt_cells(sid, 3, 3, TL_W1, TL_WN, halign = "CENTER", font_color = COL_INK))
+  b$push(col_header(sid, TL_HDR, 1, TL_WN, ink = TRUE))
+  b$push(fmt_cells(sid, TL_HDR, TL_HDR, TL_W1, TL_WN, numfmt = NF_DSHORT, halign = "CENTER"))
+  b$push(fmt_table_body(sid, TL_ROW1, TL_ROWD, 1, TL_WN))
+  b$push(fmt_row_height(sid, TL_ROWD + 1L, TL_ROWN, 24L))
+  b$push(fmt_cells(sid, TL_ROW1, TL_ROWN, 5, 6, numfmt = NF_DSHORT, halign = "LEFT"))
+  b$push(fmt_borders(sid, TL_ROW1, TL_ROWD, TL_W1, TL_WN, inner_v = BORDER_SUBTLE))
   # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab).
   for (s in c("Done", "Blocked", "In progress", "Not started"))       # one bar colour per status
     b$cf(fmt_cond_formula, sid, TL_ROW1, TL_ROWN, TL_W1, TL_WN,
-         sprintf('=AND($D5="%s",G$4<=$F5,G$4+6>=$E5)', s), bg_color = hex_to_color(ST_HEX[[s]]))
-  # as-of stripe only on rows that hold a task
-  b$cf(fmt_cond_formula, sid, TL_ROW1, TL_ROWN, TL_W1, TL_WN, '=AND($A5<>"",$C$3>=G$4,$C$3<=G$4+6)', bg_color = C_ASOF)
-  b$cf(fmt_cond_formula, sid, TL_HDR, TL_HDR, TL_W1, TL_WN, '=AND($C$3>=G$4,$C$3<=G$4+6)',
-       bg_color = hex_to_color("F5A524"), font_color = COL_INK, bold = TRUE)
-  b$cf(fmt_cond_formula, sid, TL_ROW1, TL_ROWN, 6, 6, '=AND($A5<>"",$D5<>"Done",$F5<$C$3)', font_color = COL_RED_TEXT, bold = TRUE)
+         sprintf('=AND($D5="%s",G$4<=$F5,G$4+6>=$E5)', s), bg_color = ST_COL[[s]])
+  # as-of week: the "selected column" look, only on rows that hold a task
+  b$cf(fmt_cond_formula, sid, TL_ROW1, TL_ROWN, TL_W1, TL_WN, '=AND($A5<>"",$C$3>=G$4,$C$3<=G$4+6)', bg_color = COL_RAISED)
+  b$cf(fmt_cond_formula, sid, TL_HDR, TL_HDR, TL_W1, TL_WN, '=AND($C$3>=G$4,$C$3<=G$4+6)', bg_color = COL_RAISED, font_color = COL_INK)
+  b$cf(fmt_cond_formula, sid, TL_ROW1, TL_ROWN, 6, 6, '=AND($A5<>"",$D5<>"Done",$F5<$C$3)', font_color = COL_NEGATIVE, bold = TRUE)
   b$get()
 }
 
 # ---- Workload ----------------------------------------------------------------
 fmt_workload <- function(sid) {
   b <- new_batch()
-  tot <- function(r, c1, c2) c(list(apply_style(sid, r, r, c1, c2, STYLE_TOTAL, font_size = 10),
-                                    fmt_borders(sid, r, r, c1, c2, top = list(style = "SOLID", color = COL_BRAND))))
-  b$push(c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = 2L), fmt_tab_color(sid, hex_to_color("5B6B8C"))),
-    fmt_col_widths(sid, c(16, 110, 96, 96, 96, 96, 80, 80, 96, 104, 100, 170)),
-    list(body_fmt(sid, 40L, 13), title_fmt(sid, 1, 2), sub_fmt(sid, 2, 2), fmt_row_height(sid, 1, 1, 36L),
-         fmt_row_height(sid, WL_T1_HDR, WL_T1_HDR, 40L), fmt_row_height(sid, WL_T2_HDR, WL_T2_HDR, 40L),
-         fmt_row_height(sid, WL_T1_ROW1, WL_T1_TOT, 26L), fmt_row_height(sid, WL_T2_ROW1, WL_T2_TOT, 26L)),
-    section_bar(sid, 4, 2, 12), section_bar(sid, WL_T2_HDR - 1L, 2, 6),
-    list(band_hdr(sid, WL_T1_HDR, 2, 12, C_SLATE), band_hdr(sid, WL_T1_HDR, 10, 10, COL_BRAND),
-         band_hdr(sid, WL_T2_HDR, 2, 6, C_SLATE),
-         fmt_cells(sid, WL_T1_ROW1, WL_T1_TOT, 2, 2, bold = TRUE), fmt_cells(sid, WL_T2_ROW1, WL_T2_TOT, 2, 2, bold = TRUE),
-         fmt_cells(sid, WL_T1_ROW1, WL_T1_TOT, 3, 10, numfmt = NUMFMT_INT, halign = "CENTER"),
-         fmt_cells(sid, WL_T1_ROW1, WL_T1_TOT, 11, 11, numfmt = NF_DEC1, halign = "CENTER"),
-         input_cell(sid, WL_T1_ROW1, WL_T1_ROWN, 10, 10, bold = TRUE),
-         fmt_cells(sid, WL_T2_ROW1, WL_T2_TOT, 3, 6, numfmt = NUMFMT_INT, halign = "CENTER"),       # whole hours: also the chart's axis format
-         fmt_borders(sid, WL_T1_HDR, WL_T1_TOT, 2, 12, inner_h = thin, bottom = thin),
-         fmt_borders(sid, WL_T2_HDR, WL_T2_TOT, 2, 6, inner_h = thin, bottom = thin),
-         fmt_merge(sid, WL_T2_TOT + 2L, WL_T2_TOT + 2L, 2, 6),
-         apply_style(sid, WL_T2_TOT + 2L, WL_T2_TOT + 2L, 2, 6, STYLE_SUBTITLE, font_size = 9, wrap = TRUE, valign = "TOP"),
-         fmt_row_height(sid, WL_T2_TOT + 2L, WL_T2_TOT + 2L, 44L)),
-    tot(WL_T1_TOT, 2, 12), tot(WL_T2_TOT, 2, 6)))
-  # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab).
-  b$cf(fmt_cond_color_scale, sid, WL_T1_ROW1, WL_T1_ROWN, 3, 6, COL_WHITE, hex_to_color("DCE6FA"), hex_to_color("7FA1EA"))
-  b$cf(fmt_cond_color_scale, sid, WL_T2_ROW1, WL_T2_ROWN, 3, 5, COL_WHITE, hex_to_color("FDE7B0"), hex_to_color("F2A365"))
+  b$push(fmt_tab_base(sid, WL_NOTE + 2L, 13L, "model", widths = c(110, 96, 96, 96, 96, 80, 80, 96, 104, 100, 170), inputs = TRUE))
+  b$push(fmt_section(sid, WL_T1_HDR - 1L, 2, 12, numeric_cols = 3:11)); b$push(fmt_row_height(sid, WL_T1_HDR, WL_T1_HDR, 36L))
+  b$push(fmt_table_body(sid, WL_T1_ROW1, WL_T1_TOT, 2, 12, numeric_cols = 3:11, total_rows = WL_T1_TOT, total_col = 7,
+                        numfmt = c(rep(list(NUMFMT_INT), 8), list(NF_DEC1))))
+  b$push(apply_style(sid, WL_T1_ROW1, WL_T1_ROWN, 10, 10, STYLE_INPUT))
+  b$push(fmt_section(sid, WL_T2_HDR - 1L, 2, 6, numeric_cols = 3:6)); b$push(fmt_row_height(sid, WL_T2_HDR, WL_T2_HDR, 36L))
+  b$push(fmt_table_body(sid, WL_T2_ROW1, WL_T2_TOT, 2, 6, numeric_cols = 3:6, numfmt = NUMFMT_INT,   # whole hours: also the chart's axis format
+                        total_rows = WL_T2_TOT, total_col = 6))
+  b$push(apply_style(sid, WL_NOTE, WL_NOTE + 1L, 2, 2, STYLE_NOTE))
+  for (r in c(5L, WL_T1_TOT + 1L)) b$push(fmt_row_height(sid, r, r, 12L))
+  # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab). Colour only past a limit:
+  # red weeks of work (over the overload limit) and red overdue counts; raw hours stay uncoloured.
   b$cf(fmt_cond_formula, sid, WL_T1_ROW1, WL_T1_TOT, 11, 11, sprintf('=AND(ISNUMBER($K%d),$K%d>INDIRECT("%s"))', WL_T1_ROW1, WL_T1_ROW1, OVERLOAD_REF),
-       font_color = COL_RED_TEXT, bold = TRUE)
-  b$cf(fmt_cond_number, sid, WL_T1_ROW1, WL_T1_ROWN, 8, 8, 0, font_color = COL_RED_TEXT, bold = TRUE)
+       font_color = COL_NEGATIVE, bold = TRUE)
+  b$cf(fmt_cond_number, sid, WL_T1_ROW1, WL_T1_ROWN, 8, 8, 0, font_color = COL_NEGATIVE, bold = TRUE)
   b$get()
 }
 
 # ---- Command Center ----------------------------------------------------------
-fmt_cc <- function(sid) {
-  card_cols <- lapply(kpi_cols, function(c1) c(c1, c1 + 1L))
-  accent <- list(COL_BRAND, COL_BRAND, COL_NEGATIVE, COL_WARNING, COL_BRAND, COL_BRAND)
-  cards <- unlist(lapply(seq_along(card_cols), function(k) {
-    c1 <- card_cols[[k]][1]; c2 <- card_cols[[k]][2]
-    list(fmt_merge(sid, 4, 4, c1, c2), fmt_merge(sid, 5, 5, c1, c2), fmt_merge(sid, 6, 6, c1, c2),
-         fmt_cells(sid, 4, 6, c1, c2, bg_color = C_CARD, halign = "CENTER"),
-         fmt_borders(sid, 4, 6, c1, c2, top = list(style = "SOLID_THICK", color = accent[[k]]),
-                     left = list(style = "SOLID_THICK", color = COL_WHITE), right = list(style = "SOLID_THICK", color = COL_WHITE)))
-  }), recursive = FALSE)
-  att_hdr_merges <- list(c(3, 6), c(7, 8), c(12, 13))
-  att_merges <- unlist(lapply(46:51, function(rr) lapply(att_hdr_merges, function(m) fmt_merge(sid, rr, rr, m[1], m[2]))), recursive = FALSE)
-  text_merges <- list(fmt_merge(sid, 1, 1, 2, 10), fmt_merge(sid, 1, 1, 11, 13), fmt_merge(sid, 7, 7, 2, 13),
-                      fmt_merge(sid, 52, 52, 2, 9), fmt_merge(sid, 52, 52, 10, 13), fmt_merge(sid, 2, 2, 2, 8), fmt_merge(sid, 2, 2, 9, 10), fmt_merge(sid, 2, 2, 11, 13),
-                      fmt_merge(sid, 43, 43, 2, 13), fmt_merge(sid, 54, 54, 2, 13), fmt_merge(sid, 55, 55, 2, 13), fmt_merge(sid, 56, 56, 2, 13))
-  label_row <- function(r) c(list(fmt_merge(sid, r, r, 2, 13),
-    apply_style(sid, r, r, 2, 13, STYLE_BODY_BOLD, font_size = 10, font_color = COL_BRAND_DEEP, halign = "LEFT", valign = "BOTTOM"),
-    fmt_borders(sid, r, r, 2, 13, bottom = list(style = "SOLID_MEDIUM", color = COL_BRAND)), fmt_row_height(sid, r, r, 28L)))
+fmt_cc <- function(sd) {
+  BOX <- list(style = "SOLID_MEDIUM", color = COL_ACCENT)
   b <- new_batch()
-  b$push(c(list(fmt_gridlines(sid, FALSE), fmt_freeze(sid, rows = 2L), fmt_tab_color(sid, COL_BRAND)),
-    fmt_col_widths(sid, c(16, rep(CC_COLW, 12), 16)),
-    list(body_fmt(sid, 60L, 14), fmt_row_height(sid, 1, 1, 48L), fmt_row_height(sid, 2, 2, 30L), fmt_row_height(sid, 3, 3, 10L),
-         fmt_row_height(sid, 4, 4, 26L), fmt_row_height(sid, 5, 5, 52L), fmt_row_height(sid, 6, 6, 26L), fmt_row_height(sid, 7, 7, 28L)),
-    text_merges, cards,
-    list(apply_style(sid, 1, 1, 2, 10, STYLE_BRAND_TITLE, font_size = 26),
-         apply_style(sid, 1, 1, 11, 13, STYLE_SUBTITLE, font_size = 9, halign = "RIGHT", valign = "MIDDLE", wrap = FALSE),   # credit chip (link added last)
-         apply_style(sid, 52, 52, 2, 9, STYLE_SUBTITLE, font_size = 9, halign = "LEFT", valign = "MIDDLE", wrap = FALSE),
-         apply_style(sid, 52, 52, 10, 13, STYLE_SUBTITLE, font_size = 9, halign = "RIGHT", valign = "MIDDLE", wrap = FALSE),
-         apply_style(sid, 2, 2, 2, 8, STYLE_SUBTITLE, font_size = 10, wrap = FALSE),
-         apply_style(sid, 2, 2, 9, 10, STYLE_BODY_BOLD, font_size = 10, font_color = COL_MUTED_TEXT, halign = "RIGHT"),
-         input_cell(sid, 2, 2, 11, 13, bold = TRUE, font_size = 11, halign = "CENTER"),
-         fmt_borders(sid, 2, 2, 11, 13, top = list(style = "SOLID", color = COL_BRAND), bottom = list(style = "SOLID", color = COL_BRAND),
-                     left = list(style = "SOLID", color = COL_BRAND), right = list(style = "SOLID", color = COL_BRAND)),
-         fmt_dropdown_range(sid, 2, 2, 11, 13, paste0("=", L_PICK)),
-         apply_style(sid, 4, 4, 2, 13, STYLE_BODY_BOLD, font_size = 9, font_color = COL_MUTED_TEXT, halign = "CENTER", valign = "BOTTOM"),
-         apply_style(sid, 5, 5, 2, 13, STYLE_BODY_BOLD, font_size = 30, font_color = COL_BRAND_DEEP, halign = "CENTER"),
-         apply_style(sid, 6, 6, 2, 13, STYLE_SUBTITLE, font_size = 9, halign = "CENTER", valign = "TOP", wrap = FALSE),
-         apply_style(sid, 7, 7, 2, 13, STYLE_BODY_BOLD, font_size = 10, font_color = C_SLATE, halign = "CENTER", valign = "MIDDLE", wrap = FALSE),
-         fmt_cells(sid, 5, 5, 2, 3, numfmt = NUMFMT_INT), fmt_cells(sid, 5, 5, 4, 5, numfmt = NUMFMT_PCT_WHOLE), fmt_cells(sid, 5, 5, 6, 9, numfmt = NUMFMT_INT),
-         fmt_cells(sid, 5, 5, 10, 11, numfmt = NF_HRS), fmt_cells(sid, 5, 5, 12, 13, numfmt = NUMFMT_PCT_WHOLE),
-         apply_style(sid, 43, 43, 2, 13, STYLE_SUBTITLE, font_size = 9, wrap = TRUE, valign = "TOP"), fmt_row_height(sid, 43, 43, 32L)),
-    label_row(8), label_row(26), label_row(45), label_row(53),
-    list(fmt_row_height(sid, 9, 24, 20L), fmt_row_height(sid, 25, 25, 12L), fmt_row_height(sid, 27, 42, 20L), fmt_row_height(sid, 44, 44, 12L),
-         fmt_row_height(sid, 52, 52, 22L)),
-    att_merges,
-    list(band_hdr(sid, 46, 2, 13, C_SLATE), fmt_row_height(sid, 46, 46, 28L), fmt_row_height(sid, 47, 51, 28L),
-         fmt_cells(sid, 47, 51, 2, 13, halign = "LEFT"), fmt_cells(sid, 47, 51, 2, 2, halign = "CENTER"),
-         fmt_cells(sid, 47, 51, 9, 11, halign = "CENTER"), fmt_cells(sid, 47, 51, 12, 13, halign = "CENTER", bold = TRUE),
-         fmt_cells(sid, 47, 51, 10, 10, numfmt = NF_DSHORT, halign = "CENTER"), fmt_cells(sid, 47, 51, 11, 11, numfmt = NF_NUM0, halign = "CENTER"),
-         fmt_borders(sid, 46, 51, 2, 13, bottom = thin, inner_h = thin),
-         apply_style(sid, 54, 54, 2, 13, STYLE_BODY, font_size = 10, wrap = TRUE, valign = "TOP", font_color = COL_MUTED_TEXT),
-         fmt_row_height(sid, 54, 54, 64L), fmt_row_height(sid, 55, 56, 22L))))
-  # Rules: the first one listed wins per cell (b$cf numbers them 0, 1, 2... for this tab).
-  b$cf(fmt_cond_number, sid, 5, 5, 6, 7, 0, font_color = COL_NEGATIVE)
-  b$cf(fmt_cond_number, sid, 5, 5, 8, 9, 0, font_color = C_RISK_FG)
-  b$cf(fmt_cond_number, sid, 5, 5, 12, 13, 0.75, "greater_eq", font_color = C_GRN_FG)
-  b$cf(fmt_cond_number, sid, 5, 5, 12, 13, 0.5, "less", font_color = COL_NEGATIVE)
-  b$cf(fmt_cond_color_scale, sid, 47, 51, 11, 11, COL_WHITE, C_RISK_BG, hex_to_color("F7B2B2"))
-  for (q in list(list("Overdue", C_RED_BG, COL_RED_TEXT), list("Blocked", C_AMB_BG, C_AMB_FG),
-                 list("At risk", C_RISK_BG, C_RISK_FG), list("On track", C_GRN_BG, C_GRN_FG)))
-    b$cf(fmt_cond_text_equals, sid, 47, 51, 12, 13, q[[1]], bg_color = q[[2]], font_color = q[[3]], bold = TRUE)
+  b$push(fmt_tab_base(sd, CC_LAST_ROW, 12L, "dashboard", widths = CC_WIDTHS))
+  b$push(apply_style(sd, CTRL[1], CTRL[1], CTRL[2] - 1L, CTRL[2] - 1L, STYLE_NOTE, halign = "RIGHT"))   # "Owner"
+  b$push(apply_style(sd, CTRL[1], CTRL[1], CTRL[2], CTRL[2], STYLE_CONTROL, valign = "MIDDLE"))
+  b$push(fmt_borders(sd, CTRL[1], CTRL[1], CTRL[2], CTRL[2], top = BOX, bottom = BOX, left = BOX, right = BOX))
+  b$push(fmt_dropdown_range(sd, CTRL[1], CTRL[1], CTRL[2], CTRL[2], paste0("=", L_PICK)))
+  b$push(fmt_kpi_strip(sd, K_ROW, K_COLS, lead = 2, good = c(rep("none", 5), "down"), rule_end_col = 11,
+                       value_numfmt = list(NUMFMT_PCT_WHOLE, NUMFMT_PCT_WHOLE, NUMFMT_INT, NUMFMT_INT, NUMFMT_INT, NF_HRS),
+                       delta_numfmt = list(NULL, NULL, NULL, NULL, NULL, NF_VS_PLAN), tol = c(0, 0, 0, 0, 0, 0.5)))
+  b$push(apply_style(sd, K_VAL + 2L, K_VAL + 2L, 2, 2, STYLE_NOTE))
+  b$push(fmt_section(sd, ST_SEC, 2, 11, header = FALSE, meta_col = 11))
+  b$push(fmt_section(sd, BD_SEC, 2, 11, header = FALSE, meta_col = 11))
+  b$push(fmt_section(sd, ATT_SEC, 2, 11, numeric_cols = c(6, 8:10)))
+  b$push(fmt_cells(sd, ATT_HDR, ATT_HDR, 11, 11, halign = "CENTER"))
+  b$push(fmt_table_body(sd, ATT_ROW1, ATT_ROWN, 2, 11, numeric_cols = c(6, 8:10), density = "dashboard",
+                        numfmt = list(NF_DSHORT, NUMFMT_PCT_WHOLE, NF_NUM0, NF_NUM0)))
+  b$push(fmt_status(sd, ATT_ROW1, ATT_ROWN, 11, 11, c(Overdue = "negative", Blocked = "warning", "At risk" = "warning")))
+  b$push(apply_style(sd, ATT_NOTE, ATT_NOTE, 2, 2, STYLE_NOTE))
+  b$push(apply_style(sd, ATT_NOTE, ATT_NOTE, 11, 11, STYLE_NOTE, halign = "RIGHT", font_color = COL_ACCENT_700))   # the link
+  for (r in c(BD_NOTE, BD_NOTE + 1L)) b$push(apply_style(sd, r, r, 2, 2, STYLE_NOTE))
+  b$push(fmt_section(sd, ABOUT, 2, 11, header = FALSE))
+  b$push(apply_style(sd, ABOUT + 1L, CC_LAST_ROW, 2, 2, STYLE_BODY, font_color = COL_TEXT_2))
+  b$push(fmt_cells(sd, ABOUT + 5L, ABOUT + 6L, 2, 2, font_color = COL_ACCENT_700))    # the two credit links (theme link colour)
+  for (rh in list(c(5, 5, 12), c(K_VAL + 2L, ST_SEC - 1L, 20), c(CH_ST, BD_SEC - 2L, 20), c(BD_SEC - 1L, BD_SEC - 1L, 12),
+                  c(CH_BD, BD_NOTE + 1L, 20), c(ATT_SEC - 1L, ATT_SEC - 1L, 12), c(ATT_NOTE, ATT_NOTE, 22),
+                  c(ABOUT - 1L, ABOUT - 1L, 12), c(ABOUT + 1L, CC_LAST_ROW, 22)))
+    b$push(fmt_row_height(sd, rh[1], rh[2], rh[3]))
+  # Colour only where there is risk: the overdue and blocked sub-lines when the count is above zero, late days, risk heat.
+  b$cf(fmt_cond_formula, sd, K_VAL + 1L, K_VAL + 1L, 4, 4, sprintf("=$%s>0", kv(3)), font_color = COL_NEGATIVE)
+  for (k in 4:5) b$cf(fmt_cond_formula, sd, K_VAL + 1L, K_VAL + 1L, K_COLS[k], K_COLS[k], sprintf("=$%s>0", kv(k)), font_color = STATUS$warning$ink)
+  b$cf(fmt_cond_number, sd, ATT_ROW1, ATT_ROWN, 9, 9, 0, "less", font_color = COL_NEGATIVE)
+  b$cf(fmt_cond_color_scale, sd, ATT_ROW1, ATT_ROWN, 10, 10, SCALE_HEAT$min_color, SCALE_HEAT$mid_color, SCALE_HEAT$max_color)
   b$get()
 }
 
@@ -675,7 +647,7 @@ batch_format(ss, fmt_workload(sid_wl), strict = TRUE)
 batch_format(ss, fmt_cc(sid_cc), strict = TRUE)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STEP 3: protection, filter views, theme, charts, links (own batches)
+# STEP 3: protection, filter views, charts, links (own batches)
 # ══════════════════════════════════════════════════════════════════════════════
 # ponytail: protection is advisory (warningOnly): enforcing it needs editor emails, which do not belong in a public script
 # Whole-sheet protection with an editable hole is the only form the API allows for "protect the formulas, leave the inputs open".
@@ -685,14 +657,14 @@ batch_format(ss, list(
   fmt_protected_range(sid_tl, 3, TL_ROWN, 1, TL_WN, description = "Timeline is drawn by formulas from the Tasks tab"),
   fmt_protected_range(sid_wl, description = "Formulas. Only the blue capacity inputs are meant to be edited",
                       unprotected_ranges = grid_range(sid_wl, WL_T1_ROW1, WL_T1_ROWN, 10, 10)),
-  fmt_protected_range(sid_cc, description = "Dashboard formulas. Use the Owner view picker to filter",
-                      unprotected_ranges = grid_range(sid_cc, 2, 2, 11, 13)),
+  fmt_protected_range(sid_cc, description = "Dashboard formulas. Use the Owner picker to filter",
+                      unprotected_ranges = grid_range(sid_cc, CTRL[1], CTRL[1], CTRL[2], CTRL[2])),
   fmt_protected_range(sid_l, BD_HDR, BD_WK_LAST, 1, 13, description = "Chart data (formulas)"),
   fmt_protected_range(sid_l, 8, 8, 2, 2, description = "Formula"),
   fmt_protected_range(sid_l, 13, 19, 6, 6, description = "Formulas")), strict = TRUE)
 
 # Owner slicer chip on the Tasks tab. A slicer only filters rows (and charts built on its own data range), so it would not
-# move the Command Center KPIs and charts, which are formulas: the Owner view picker drives those instead.
+# move the Command Center KPIs and charts, which are formulas: the Owner picker drives those instead.
 batch_format(ss, list(fmt_slicer(sid_t, sid_t, c(T_HDR, T_ROWN, 1L, 16L), column_index = TC$owner - 1L, anchor_row = 1L,
                                  anchor_col = 11L, title = "Owner", size = c(250L, 34L))), strict = TRUE)
 
@@ -707,48 +679,40 @@ batch_format(ss, list(
   fv("P0 and P1 only", list("4" = list(hiddenValues = list("P2", "P3")))),
   fv(paste("Only", OWNERS[1]), list("3" = list(hiddenValues = as.list(setdiff(OWNERS, OWNERS[1])))))), strict = TRUE)
 
-# Pie slices take their colors from the spreadsheet theme: the first four accents are the status colors.
-batch_format(ss, list(fmt_theme_colors(accent1 = ST_HEX[["Not started"]], accent2 = ST_HEX[["In progress"]],
-  accent3 = ST_HEX[["Blocked"]], accent4 = ST_HEX[["Done"]], accent5 = "163A85", accent6 = "5B6B8C",
-  text = "12161C", background = "FFFFFF", link = "2457C5")), strict = TRUE)
-
-stat_col <- function(s) hex_to_color(ST_HEX[[s]])
-# Charts read their data from Lists and sit on another tab (anchor_sheet_id). They fill B..M exactly (CC_W px) so their edges line
-# up with the KPI cards and section rules; offset_y = 8 keeps them off the rule above.
-CH_STYLE <- list(font = "Arial", title_size = 12, title_bold = TRUE, title_color = COL_INK)   # Arial throughout, bold ink title
-pie <- fmt_chart_pie(sid_l, "Tasks by status", donut = TRUE, pie_hole = 0.55,
-  domain_range = c(BD_ROW1, BD_ROW1 + 3L, 1, 1), data_range = c(BD_ROW1, BD_ROW1 + 3L, 2, 2),
-  anchor = c(9L, 2L), size = c(CC_HALF, 312L), anchor_sheet_id = sid_cc, offset_y = 8L, style = CH_STYLE)
-bar <- fmt_chart_bar(sid_l, "Tasks by workstream and status",
-  domain_range = c(BD_HDR, BD_ROW1 + 4L, 4, 4),
-  series_list = lapply(5:8, function(cc) list(range = c(BD_HDR, BD_ROW1 + 4L, cc, cc), color = stat_col(STATUSES[cc - 4L]),
-    # white label only on the blue (6.5:1); green and amber need dark text
-    label = list(type = "DATA", placement = "CENTER", textFormat = list(fontFamily = "Arial", fontSize = 10, bold = TRUE,
-      foregroundColorStyle = list(rgbColor = if (STATUSES[cc - 4L] == "In progress") COL_WHITE else COL_INK))))),
-  header_count = 1L, stacked_type = "STACKED", anchor = c(9L, 8L), size = c(CC_HALF, 312L), legend = "BOTTOM_LEGEND",
-  anchor_sheet_id = sid_cc, x_title = "Tasks", offset_x = CC_BAR_DX, offset_y = 8L, style = CH_STYLE)
-burn <- fmt_chart_basic(sid_l, "Hours remaining: planned vs actual", "LINE",
+# Charts read their data from Lists and sit on the Command Center (anchor_sheet_id), filling B..K (CC_W px). Status is a
+# breakdown of states, so it is a 100% bar, never a pie: one accent family (not started, in progress), the warning mark on
+# Blocked, grey for Done. The titles stay descriptive because the owner picker changes the data under them.
+st_label <- function(s) list(type = "DATA", placement = "CENTER",
+  textFormat = list(fontSize = 9, foregroundColorStyle = list(rgbColor = if (s == "In progress") COL_WHITE else COL_INK)))
+st_series <- function(r1, r2) lapply(5:8, function(cc) { s <- STATUSES[cc - 4L]
+  list(range = c(r1, r2, cc, cc), color = ST_COL[[s]], label = st_label(s)) })
+status_bar <- fmt_chart_bar(sid_l, "Tasks by status", domain_range = c(ST_HDR, ST_ROW, 4, 4), series_list = st_series(ST_HDR, ST_ROW),
+  header_count = 1L, stacked_type = "PERCENT_STACKED", legend = "TOP_LEGEND", anchor = c(CH_ST, 2L), size = c(CC_W, 152L),
+  anchor_sheet_id = sid_cc, x_title = "Share of the tasks in view", offset_y = 4L, style = STYLE_CHART)
+ws_bar <- fmt_chart_bar(sid_l, "Tasks by workstream and status", domain_range = c(BD_HDR, BD_ROW1 + 4L, 4, 4),
+  series_list = st_series(BD_HDR, BD_ROW1 + 4L), header_count = 1L, stacked_type = "STACKED", legend = "TOP_LEGEND",
+  anchor = c(CH_WS, 2L), size = c(CC_W, 252L), anchor_sheet_id = sid_cc, x_title = "Tasks", offset_y = 4L, style = STYLE_CHART)
+burn <- fmt_chart_basic(sid_l, "Hours remaining, planned vs actual", "LINE",
   domain_range = c(BD_HDR, BD_WK_LAST, 11, 11),
-  series_list = list(list(range = c(BD_HDR, BD_WK_LAST, 12, 12), color = hex_to_color("8A94A6"), line = list(type = "MEDIUM_DASHED")),
-                     list(range = c(BD_HDR, BD_WK_LAST, 13, 13), color = COL_BRAND, point = list(size = 7, shape = "CIRCLE"))),
-  header_count = 1L, anchor = c(27L, 2L), size = c(CC_W, 312L), legend = "TOP_LEGEND",
-  anchor_sheet_id = sid_cc, x_title = "Week starting", y_title = "Hours remaining", offset_y = 8L, style = CH_STYLE)
-batch_format(ss, list(pie, bar, burn), strict = TRUE)
-batch_format(ss, list(fmt_chart_basic(sid_wl, "Hours remaining by owner and status", "COLUMN",
+  series_list = list(list(range = c(BD_HDR, BD_WK_LAST, 12, 12), color = GREY, line = list(width = 2, type = "MEDIUM_DASHED")),
+                     list(range = c(BD_HDR, BD_WK_LAST, 13, 13), color = COL_ACCENT, line = list(width = 3))),
+  header_count = 1L, anchor = c(CH_BD, 2L), size = c(CC_W, 312L), legend = "TOP_LEGEND",
+  anchor_sheet_id = sid_cc, x_title = "Week starting", y_title = "Hours remaining", offset_y = 4L, style = STYLE_CHART)
+batch_format(ss, list(status_bar, ws_bar, burn), strict = TRUE)
+batch_format(ss, list(fmt_chart_basic(sid_wl, TTL_WL, "COLUMN",
   domain_range = c(WL_T2_HDR, WL_T2_ROWN, 2, 2),
-  series_list = lapply(3:5, function(cc) list(range = c(WL_T2_HDR, WL_T2_ROWN, cc, cc), color = stat_col(STATUSES[cc - 2L]))),
-  header_count = 1L, stacked_type = "STACKED", anchor = c(WL_T2_HDR - 1L, 8L), size = c(550L, 300L), legend = "BOTTOM_LEGEND",   # H..L = 550 px: flush with the table above
-  y_title = "Hours", style = CH_STYLE)), strict = TRUE)
+  series_list = lapply(3:5, function(cc) list(range = c(WL_T2_HDR, WL_T2_ROWN, cc, cc), color = ST_COL[[STATUSES[cc - 2L]]])),
+  header_count = 1L, stacked_type = "STACKED", anchor = c(WL_T2_HDR - 1L, 8L), size = c(550L, 300L), legend = "TOP_LEGEND",   # H..L = 550 px: flush with the table above
+  y_title = "Hours left", style = STYLE_CHART)), strict = TRUE)
 
 # Rich-text links and the note go in their own last batch
 tasks_url <- sprintf("https://docs.google.com/spreadsheets/d/%s/edit#gid=%d", ss_id, sid_t)
 # Only Tasks!O3 gets a note: Sheets' PDF export prints every note as a [n] marker plus an extra page, and on the Command Center
-# the risk definition is visible text (row 52) instead.
+# the risk definition is visible text instead.
 batch_format(ss, list(
-  link_cells_req(sid_cc, 1, 11, "Built with r-googlesheets4", REPO_URL),
-  link_cells_req(sid_cc, 52, 10, "Open the full task list", tasks_url),
-  link_cells_req(sid_cc, 55, 2, c("Built with the r-googlesheets4 skill (github.com/salvadoraveldano/r-googlesheets4)",
-                                  "Built on googlesheets4 by Jennifer Bryan and Posit (googlesheets4.tidyverse.org)"),
+  link_cells_req(sid_cc, ATT_NOTE, 11, "Open the full task list", tasks_url),
+  link_cells_req(sid_cc, ABOUT + 5L, 2, c("Built with the r-googlesheets4 skill (github.com/salvadoraveldano/r-googlesheets4)",
+                                          "Built on googlesheets4 by Jennifer Bryan and Posit (googlesheets4.tidyverse.org)"),
                  c(REPO_URL, GS4_URL)),
   fmt_note(sid_t, 3, 15, sprintf(paste0("Risk score, 0 to 100 (Done tasks score 0): priority points + schedule-gap points + an overdue bonus + a blocked bonus, ",
     "capped at 100. The weights are inputs on the Lists tab, rows %d to %d. At or above the At-risk threshold (Lists!B%d) the task is flagged At risk."),
@@ -764,8 +728,8 @@ bad <- function(...) problems <<- c(problems, sprintf(...))
 
 # 1. no error values anywhere
 err_re <- "^#(REF|DIV/0|NAME|N/A|VALUE|NUM|NULL|ERROR)|^Err:|###"
-scan_ranges <- c(sprintf("'%s'!A1:N%d", TAB_CC, CC_LAST_ROW), sprintf("'%s'!A1:P%d", TAB_TASKS, T_AGG),
-                 sprintf("'%s'!A1:V%d", TAB_TL, TL_ROWN), sprintf("'%s'!A1:L%d", TAB_WL, 30L), sprintf("'%s'!A1:M%d", TAB_LISTS, WLD_LAST + 4L))
+scan_ranges <- c(sprintf("'%s'!A1:L%d", TAB_CC, CC_LAST_ROW), sprintf("'%s'!A1:P%d", TAB_TASKS, T_AGG),
+                 sprintf("'%s'!A1:V%d", TAB_TL, TL_ROWN), sprintf("'%s'!A1:M%d", TAB_WL, WL_NOTE + 1L), sprintf("'%s'!A1:M%d", TAB_LISTS, WLD_LAST + 4L))
 fv_all <- read_values(ss, scan_ranges)
 for (i in seq_along(fv_all)) {
   hits <- sum(grepl(err_re, fv_all[[i]]))
@@ -775,11 +739,13 @@ for (i in seq_along(fv_all)) {
 # 2. formulas agree with the R reference (all people, then one owner)
 check_view <- function(owner) {
   e <- expected(tk, owner); b <- burn_expected(tk, owner)
-  v <- read_values(ss, c(sprintf("'%s'!B5:M5", TAB_CC), sprintf("'%s'!J%d:M%d", TAB_LISTS, BD_ROW1, BD_WK_LAST)),
-                   "UNFORMATTED_VALUE")
-  k <- suppressWarnings(as.numeric(v[[1]])); bl <- v[[2]]      # KPI cards are merged pairs: B, D, F, H, J, L hold the values
-  got <- c(total = k[1], done = k[3], over = k[5], blocked = k[7], hours = k[9], ontrack = k[11])
-  want <- c(total = e$total, done = e$done / e$total, over = e$over, blocked = e$blocked, hours = e$hours, ontrack = e$ontrack)
+  v <- read_values(ss, c(sprintf("'%s'!%s:%s", TAB_CC, kv(1), kv(6)), sprintf("'%s'!J%d:M%d", TAB_LISTS, BD_ROW1, BD_WK_LAST),
+                         sprintf("'%s'!B4", TAB_CC)), "UNFORMATTED_VALUE")
+  k <- suppressWarnings(as.numeric(v[[1]])); bl <- v[[2]]      # B..I: on track, done, overdue, blocked, at risk, (G, H empty), hours
+  n_meta <- as.numeric(sub("^.*? · ([0-9]+) tasks? .*$", "\\1", v[[3]][1, 1], perl = TRUE))   # the tasks count in the B4 meta line
+  got <- c(total = n_meta, done = k[2], over = k[3], blocked = k[4], atrisk = k[5], hours = k[8], ontrack = k[1])
+  want <- c(total = e$total, done = e$done / e$total, over = e$over, blocked = e$blocked, atrisk = sum(e$health == "At risk"),
+            hours = e$hours, ontrack = e$ontrack)
   lab <- owner %||% ALL_LABEL
   for (nm in names(want)) if (!isTRUE(all.equal(as.numeric(got[[nm]]), as.numeric(want[[nm]]), tolerance = 1e-6)))
     bad("[%s] KPI %s: sheet %s vs expected %s", lab, nm, got[[nm]], want[[nm]])
@@ -789,20 +755,20 @@ check_view <- function(owner) {
   if (sum(!is.na(actual)) != length(b$actual)) bad("[%s] actual has %d points, expected %d", lab, sum(!is.na(actual)), length(b$actual))
 }
 set_picker <- function(who) {
-  write_cell(ss, TAB_CC, 2, 11, who); flush_writes(ss, strict = TRUE); Sys.sleep(3)
+  write_cell(ss, TAB_CC, CTRL[1], CTRL[2], who); flush_writes(ss, strict = TRUE); Sys.sleep(3)
 }
 set_picker(ALL_LABEL); check_view(NULL)
 set_picker(OWNERS[2]); check_view(OWNERS[2])
 set_picker("")                                          # a cleared picker must behave exactly like All people
 check_view(NULL)
-cap <- read_values(ss, sprintf("'%s'!B6", TAB_CC))[[1]][1, 1]
-if (!grepl("^across", cap)) bad("blank picker: card caption reads '%s', expected the All people caption", cap)
+cap <- read_values(ss, sprintf("'%s'!B4", TAB_CC))[[1]][1, 1]
+if (!grepl(" tasks across ", cap)) bad("blank picker: meta line reads '%s', expected the All people one", cap)
 set_picker(ALL_LABEL)
 
 # the guarded rows below the sample tasks must stay empty, and the headline cells must read well
 spare <- as.vector(read_values(ss, sprintf("'%s'!J%d:P%d", TAB_TASKS, T_ROWN + 1L, T_AGG))[[1]])
 if (any(nzchar(spare))) bad("%d non-empty cell(s) in the guarded Tasks rows %d-%d", sum(nzchar(spare)), T_ROWN + 1L, T_AGG)
-for (a1 in c("B7", "B8", "B26")) message(sprintf("[headline] %s = %s", a1,
+for (a1 in c("B2", "B3", sprintf("K%d", ST_SEC), sprintf("K%d", BD_SEC))) message(sprintf("[headline] %s = %s", a1,
   read_values(ss, sprintf("'%s'!%s", TAB_CC, a1))[[1]][1, 1]))
 
 hv <- read_values(ss, sprintf("'%s'!L%d:P%d", TAB_TASKS, T_ROW1, T_ROWN), "UNFORMATTED_VALUE")[[1]]   # L..P: hours left .. health

@@ -4,9 +4,9 @@ Three sample Google Sheets, each built by one R script from synthetic data. Ever
 
 | Sheet | Script | Tabs | What it shows |
 |---|---|---|---|
-| SaaS Financial Model | `saas-model.R` | 8 | A 24-month, driver-based model. One scenario dropdown (Base, Upside, Downside) drives every tab through named ranges. The Summary tab has KPI cards with sparklines, an MRR waterfall, an ARR-by-scenario chart and a scenario table. A Checks tab runs 17 integrity checks and feeds a status badge. |
-| Ops Command Center | `ops-command-center.R` | 5 | A project dashboard. KPI cards, a status doughnut, a workstream bar chart, planned-versus-actual burn-down, a top-5 "needs attention" list, 45 tasks with dropdowns and sparkline progress bars, a weekly Gantt drawn by conditional formatting, and an owner-by-status workload heatmap. |
-| Personal Finance Tracker | `personal-finance.R` | 6 | A month picker drives the dashboard: KPI cards, a budget-health strip, four charts and a top-5 list. Budget, Transactions (about 370 rows), Net Worth and Trends tabs sit behind it, with SUMIFS actuals, red and green variance rules, a native pivot-table heatmap and live self-checks. |
+| SaaS Financial Model | `saas-model.R` | 8 | A 24-month, driver-based model. One scenario dropdown (Base, Upside, Downside) drives every tab through named ranges. The Summary tab leads with a live finding and the ARR headline, then a scenario table, an MRR bridge and ARR by scenario. A Checks tab runs 17 integrity checks and feeds a status badge. |
+| Ops Command Center | `ops-command-center.R` | 5 | A project dashboard. A live finding and the share of work on track, status bars overall and by workstream, planned-versus-actual burn-down, a top-5 "needs attention" list, 45 tasks with dropdowns and sparkline progress bars, a weekly Gantt drawn by conditional formatting, and an owner-by-status workload heatmap. |
+| Personal Finance Tracker | `personal-finance.R` | 6 | A month picker drives the dashboard: a live finding, spending against budget with the over-budget categories marked, a budget chart, where the money went, and twelve-month charts. Budget, Transactions (about 370 rows), Net Worth and Trends tabs sit behind it, with SUMIFS actuals, variance rules that colour only what is over, a native pivot-table heatmap and live self-checks. |
 
 ## Live samples
 

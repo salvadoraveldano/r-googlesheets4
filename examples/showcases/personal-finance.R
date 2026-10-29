@@ -516,7 +516,8 @@ b$push(fmt_borders(sd, CTRL[1], CTRL[1], CTRL[2], CTRL[2], top = BOX, bottom = B
 b$push(fmt_status(sd, 4, 4, CTRL[2], CTRL[2], c("✓" = "positive", "✕" = "negative"), op = "starts_with"))   # self-check badge
 b$push(fmt_kpi_strip(sd, 6, K_COLS, lead = 2, good = c("down", "up", "up", "up", "up", "none"), rule_end_col = 11,
                      value_numfmt = list(NF_USD_NEG, NF_USD_NEG, NF_USD_NEG, NF_PCT1, NF_USD_NEG, NULL),
-                     delta_numfmt = list(NULL, NUMFMT_DELTA_PCT, NUMFMT_DELTA_CURRENCY, NUMFMT_DELTA_PT, NUMFMT_DELTA_CURRENCY, NULL)))
+                     delta_numfmt = list(NULL, NUMFMT_DELTA_PCT, NUMFMT_DELTA_CURRENCY, NUMFMT_DELTA_PT, NUMFMT_DELTA_CURRENCY, NULL),
+                     tol = c(0, 0.0005, 0.5, 0.05, 0.5, 0)))   # half the last shown digit: "+0.0 pts" stays grey
 b$push(apply_style(sd, 9, 9, 2, 2, STYLE_NOTE))
 for (s in c(11, 26, 37, 54)) b$push(fmt_section(sd, s, 2, 11, header = FALSE, meta_col = if (s == 11) 6 else if (s == 37) 11 else NULL))
 b$push(col_header(sd, 12, 2, 6, num = 3:5)); b$push(fmt_cells(sd, 12, 12, 6, 6, halign = "CENTER"))
