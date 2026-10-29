@@ -175,7 +175,7 @@ STYLE_PCT_ANNOTATION <- STYLE_NOTE
 STYLE_SECTION_HEADER <- list(font_size = 12, bold = TRUE, font_color = COL_INK,    # with an ink rule above (fmt_section)
                              bg_color = COL_WHITE, halign = "LEFT", valign = "BOTTOM")
 STYLE_HEADER    <- list(font_size = 9, bold = TRUE, font_color = COL_TEXT_2,       # table column headers
-                        valign = "BOTTOM", wrap = TRUE)
+                        bg_color = COL_WHITE, valign = "BOTTOM", wrap = TRUE)
 STYLE_SUBTOTAL  <- list(bold = TRUE, bg_color = COL_WHITE)
 STYLE_NET_INCOME <- list(font_size = 10, bold = TRUE, bg_color = COL_WHITE)
 STYLE_REMAINING <- list(bold = TRUE, font_color = STATUS$positive$ink, bg_color = COL_WHITE)
@@ -220,12 +220,16 @@ apply_style <- function(sheet_id, start_row, end_row, start_col, end_col,
 #' `fmt_section()`, which does not merge.
 #'
 #' Returns a list of 4 requests — combine with `c()`, not `list()`.
+#' Leave `fg_color` out and the label takes ink or white, whichever reads better
+#' on `bg_color` (an old call with `bg_color = COL_BRAND` stays white on blue).
 write_section_header <- function(ss, sheet_name, sheet_id, row, label,
                                  start_col = 3L, end_col = 8L,
                                  bg_color  = COL_WHITE,
-                                 fg_color  = COL_INK,
+                                 fg_color  = NULL,
                                  font_size = 12L,
                                  row_height = 30L) {
+  fg_color <- fg_color %||%
+    (if (.contrast(COL_WHITE, bg_color) > .contrast(COL_INK, bg_color)) COL_WHITE else COL_INK)
   write_cell(ss, sheet_name, row, start_col, label)
   list(
     fmt_merge(sheet_id, row, row, start_col, end_col),
@@ -361,11 +365,14 @@ fmt_table_body <- function(sheet_id, start_row, end_row, start_col, end_col,
 #' @param good    "up", "down" or "none" per KPI (recycled): a cost is "down"
 #' @param value_numfmt,delta_numfmt  one NUMFMT_* or a list with one per KPI
 #'                (NULL entries keep the cell's format, e.g. text sub-values)
+#' @param tol     a change this small or smaller stays grey (recycled per KPI):
+#'                set it to half the last shown digit, e.g. 0.0005 for "+0.0%",
+#'                0.05 for "+0.0 pts", 0.5 for whole dollars
 fmt_kpi_strip <- function(sheet_id, row, cols, lead = cols[1L], good = "up",
                           value_numfmt = NULL, delta_numfmt = NUMFMT_DELTA_PCT,
-                          rule_end_col = max(cols)) {
+                          rule_end_col = max(cols), tol = 0) {
   n <- length(cols)
-  good <- rep_len(good, n)
+  good <- rep_len(good, n); tol <- abs(rep_len(tol, n))
   if (!all(good %in% c("up", "down", "none")))
     stop("fmt_kpi_strip(): `good` must be \"up\", \"down\" or \"none\"", call. = FALSE)
   per <- function(x) if (is.null(x)) vector("list", n) else if (!is.null(x$type)) rep(list(x), n) else rep_len(x, n)
@@ -385,8 +392,8 @@ fmt_kpi_strip <- function(sheet_id, row, cols, lead = cols[1L], good = "up",
       up <- if (good[k] == "up") COL_POSITIVE else COL_NEGATIVE
       dn <- if (good[k] == "up") COL_NEGATIVE else COL_POSITIVE
       # The two rules never overlap (> 0 and < 0), so their priority does not matter.
-      out <- c(out, list(fmt_cond_number(sheet_id, r3, r3, c, c, value = 0, op = "greater", font_color = up),
-                         fmt_cond_number(sheet_id, r3, r3, c, c, value = 0, op = "less", font_color = dn)))
+      out <- c(out, list(fmt_cond_number(sheet_id, r3, r3, c, c, value = tol[k], op = "greater", font_color = up),
+                         fmt_cond_number(sheet_id, r3, r3, c, c, value = -tol[k], op = "less", font_color = dn)))
     }
   }
   c(out, list(fmt_borders(sheet_id, r1, r3, min(cols), rule_end_col, top = BORDER_INK, bottom = BORDER_SUBTLE)))

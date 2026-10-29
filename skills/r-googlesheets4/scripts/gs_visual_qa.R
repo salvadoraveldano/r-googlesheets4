@@ -150,7 +150,8 @@ audit_layout <- function(ss, sheet_name, max_wide_px = 400L, min_narrow_px = 40L
         cr <- .contrast(fg, bg)
         if (cr < 3) add(.finding(sheet_name, a1(ri, ci), "major", sprintf("low contrast %.1f:1 (text vs fill)", cr), "darken the text or lighten the fill (aim for 4.5:1)"))
       }
-      if (is_num) col_num_align[[ci]] <- c(col_num_align[[ci]], .nz(ef$horizontalAlignment, "DEFAULT"))
+      # KPI figures (18 pt and up) are left-aligned on purpose (fmt_kpi_strip), so they don't count.
+      if (is_num && fs < 18) col_num_align[[ci]] <- c(col_num_align[[ci]], .nz(ef$horizontalAlignment, "DEFAULT"))
     }
   }
 
@@ -177,7 +178,7 @@ audit_layout <- function(ss, sheet_name, max_wide_px = 400L, min_narrow_px = 40L
 pdf_to_pngs <- function(pdf, dpi = 110L) {
   prefix <- sub("\\.pdf$", "", pdf)
   if (nzchar(Sys.which("pdftoppm"))) {
-    system2("pdftoppm", c("-r", dpi, "-png", shQuote(pdf), shQuote(prefix)))
+    system2("pdftoppm", c("-r", dpi, "-png", shQuote(pdf), shQuote(prefix)), stderr = FALSE)  # Google's PDFs trigger harmless syntax warnings
     return(sort(Sys.glob(paste0(prefix, "-*.png"))))
   }
   if (requireNamespace("pdftools", quietly = TRUE)) {

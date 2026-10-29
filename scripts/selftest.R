@@ -101,7 +101,7 @@ poll <- function(fn, done, tries = 5L, wait = 2) {
 
 # pdftoppm (called by pdf_to_pngs) prints poppler warnings about Google's PDFs; hide them.
 no_poppler_noise <- function(expr) {
-  assign("system2", function(command, args = character(), ...) base::system2(command, args, ..., stderr = FALSE), envir = globalenv())
+  assign("system2", function(command, args = character(), ..., stderr = FALSE) base::system2(command, args, ..., stderr = stderr), envir = globalenv())
   on.exit(rm("system2", envir = globalenv()))
   expr
 }

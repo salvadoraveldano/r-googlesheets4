@@ -331,6 +331,17 @@ ok("fmt_tab_base(data, title_row = 2) keeps the title block on a data tab",
    any(vapply(fmt_tab_base(3, 40, 8, "data", title_row = 2L), function(r)
      identical(r$repeatCell$cell$userEnteredFormat$textFormat$fontSize, 20), NA)))
 
+kt <- fmt_kpi_strip(3, 6, 2:3, tol = c(0.0005, 0.05))
+vals <- vapply(Filter(function(r) !is.null(r$addConditionalFormatRule), kt), function(r)
+  r$addConditionalFormatRule$rule$booleanRule$condition$values[[1]]$userEnteredValue, "")
+ok("fmt_kpi_strip(tol =) keeps a change within tol grey (rules start at +-tol, per KPI)",
+   identical(vals, c("0.0005", "-0.0005", "0.05", "-0.05")))
+ok("STYLE_HEADER resets the header fill to white (sheet_write() leaves grey)", identical(STYLE_HEADER$bg_color, COL_WHITE))
+
+wb <- write_section_header(NULL, "T", 3, 5, "Old call", bg_color = COL_BRAND); clear_writes()
+ok("write_section_header(bg_color = COL_BRAND) with no fg_color keeps a readable white label",
+   identical(wb[[2]]$repeatCell$cell$userEnteredFormat$textFormat$foregroundColorStyle$rgbColor, COL_WHITE))
+
 # ── Every request must serialise ----------------------------------------------
 js <- tryCatch(jsonlite::toJSON(REQS, auto_unbox = TRUE, digits = NA), error = function(e) NULL)
 ok("every request built above serialises to valid JSON", !is.null(js) && jsonlite::validate(js))
