@@ -1,11 +1,12 @@
 # =============================================================================
 # personal-finance.R  -  Showcase: "Personal Finance Tracker - Sample Data"
 # =============================================================================
-# Builds     One Google Sheet with six tabs: Dashboard (month picker, KPI cards,
-#            budget-health strip, 4 charts, top-5 list), Budget (inputs, SUMIFS
-#            actuals, variance with red/green rules, live self-checks), Transactions
-#            (~370 rows, dropdowns, filter), Net Worth (balances, totals, MoM, 2 charts),
+# Builds     One Google Sheet with six tabs: Dashboard (month picker, KPI strip,
+#            budget table, spending breakdown, 4 charts), Budget (inputs, SUMIFS
+#            actuals, variance, live self-checks), Transactions (~370 rows,
+#            dropdowns, filter), Net Worth (balances, totals, MoM, 2 charts),
 #            Trends (12-month summary, savings chart, native pivot heatmap), Lists.
+#            Styled with the skill's default "Ledger" design system.
 # Reads      Nothing external. Every row is synthetic and generated below with
 #            set.seed(): no real people, merchants, accounts or amounts.
 # Access     Default "sheets" level (spreadsheets scope only). No Drive access,
@@ -46,19 +47,10 @@ for (f in c("gs_helpers.R", "gs_buffer.R", "gs_qa.R", "gs_formulas.R",
 
 gs_connect(USER_EMAIL)   # saved login only; never opens a browser
 
-# -- Names, palette, styles ---------------------------------------------------
+# -- Names and number formats (colours, type and rules come from the Ledger tokens) --
 T_DASH <- "Dashboard"; T_BUD <- "Budget"; T_TXN <- "Transactions"
 T_NW <- "Net Worth"; T_TRD <- "Trends"; T_LST <- "Lists"
 TABS <- c(T_DASH, T_BUD, T_TXN, T_NW, T_TRD, T_LST)
-
-PAL <- c(blue = "2457C5", teal = "12A59A", amber = "F5A524", violet = "7C5CFC",
-         sky = "5AA9F0", slate = "8A94A6", navy = "163A85")     # chart / card accents
-COL_PANEL    <- hex_to_color("F4F6FB")     # card + chart background
-COL_INPUT_BG <- hex_to_color("FFF6D6")     # pale yellow: input cells
-COL_INPUT_FG <- hex_to_color("1A4FD6")     # blue text: typed-in values
-COL_SLATE    <- hex_to_color("5F6B7A")     # muted text
-COL_HAIR     <- hex_to_color("D5DBE6")     # hairlines
-WHITE_THICK  <- list(style = "SOLID_THICK", color = COL_WHITE)
 
 num <- function(p) list(type = "NUMBER", pattern = p)
 NF_USD     <- NUMFMT_CURRENCY               # $#,##0;($#,##0);"-"
@@ -72,14 +64,13 @@ NF_INT     <- num("0")
 NF_MONTH_LONG <- list(type = "DATE", pattern = "mmmm yyyy")
 NF_MONTH      <- list(type = "DATE", pattern = "mmm yyyy")
 NF_DAY        <- list(type = "DATE", pattern = "mmm d, yyyy")
+hx <- function(col) color_to_hex(col)       # "#RRGGBB", for SPARKLINE colours
+GREY <- hex_to_color(CHART_PALETTE[2]); DARK <- hex_to_color(CHART_PALETTE[5])   # comparison and reference series
 
-GOOD <- list(fg = hex_to_color("0F6B3A"), bg = hex_to_color("D9F2E3"))
-WARN <- list(fg = hex_to_color("8A5A00"), bg = hex_to_color("FEEFC8"))
-BAD  <- list(fg = hex_to_color("9B1C1C"), bg = hex_to_color("FBD5D5"))
-
-# One look for all seven charts. The border matches the panel: Google's default dark outline would show a sliver of it.
-CHART_STYLE <- list(font = "Arial", title_size = 12, title_bold = TRUE, title_color = COL_INK, title_position = "LEFT",
-                    background = COL_PANEL, border = COL_PANEL, axis_font_size = 9)
+# A table's column-header row with no section heading above it; `ink` adds the block's top rule.
+col_header <- function(sid, r, c1, c2, num = integer(0), ink = FALSE)
+  c(fmt_section(sid, r, c1, c2, numeric_cols = num, heading = FALSE),
+    if (ink) list(fmt_borders(sid, r, r, c1, c2, top = BORDER_INK)))
 
 # -- Synthetic data -----------------------------------------------------------
 set.seed(SEED)
@@ -161,6 +152,25 @@ nw$CreditCard <- round(card_m * runif(N_MONTHS, .45, .65))
 nw$CarLoan <- round(14200 - 365 * (seq_len(N_MONTHS) - 1))
 nw$StudentLoan <- round(17600 - 240 * (seq_len(N_MONTHS) - 1))
 
+
+# Chart titles state what the 12 sample months show. A chart title cannot be a formula, so the ones on
+# picker-driven charts stay descriptive, and the rest are computed here from the same rows the sheet gets.
+usd <- function(x) paste0("$", formatC(round(x), format = "d", big.mark = ","))
+of12 <- function(n) if (n == N_MONTHS) "every month" else sprintf("in %d of %d months", n, N_MONTHS)
+nw_val <- with(nw, Checking + Savings + Investments + Retirement - CreditCard - CarLoan - StudentLoan)
+d_nw <- nw_val[N_MONTHS] - nw_val[1]
+top_cat <- sapply(mk, function(k) { e <- txn[mkey == k & txn$Type == "Expense", ]; names(which.max(tapply(e$Amount, e$Category, sum))) })
+assets_end <- unlist(nw[N_MONTHS, c("Checking", "Savings", "Investments", "Retirement")])
+debt <- with(nw, CreditCard + CarLoan + StudentLoan); assets <- with(nw, Checking + Savings + Investments + Retirement)
+peak <- which.max(exp_m)
+TTL <- list(
+  ring   = if (all(top_cat == "Housing")) "Housing is the biggest share of spending" else "Spending by category, top 4 and the rest",
+  flow   = sprintf("Spending peaked in %s at %s; income beat it %s", format(months[peak], "%B"), usd(exp_m[peak]), of12(sum(net_m > 0))),
+  nw     = sprintf("Net worth %s %s since %s", if (d_nw >= 0) "grew" else "fell", usd(abs(d_nw)), format(months[1], "%B %Y")),
+  sav    = sprintf("Saved money %s: income beat spending", of12(sum(net_m > 0))),
+  lines  = sprintf("Debt fell %s while assets grew %s", usd(debt[1] - debt[N_MONTHS]), usd(assets[N_MONTHS] - assets[1])),
+  assets = sprintf("%s holds %d%% of all assets", names(which.max(assets_end)), round(100 * max(assets_end) / sum(assets_end))))
+
 # -- Workbook: create or reuse, then start from clean tabs ---------------------
 # On a rerun gs_open_or_create() refuses a wrong SHEET_ID before it changes anything; gs_reset_tabs() then
 # clears only the tabs named. The sample holds dates only (no clock times), so a neutral time zone changes no
@@ -172,11 +182,10 @@ sid <- sapply(TABS, function(t) get_sheet_id(ss, t))
 S_DASH <- sid[[T_DASH]]; S_BUD <- sid[[T_BUD]]; S_TXN <- sid[[T_TXN]]
 S_NW <- sid[[T_NW]]; S_TRD <- sid[[T_TRD]]; S_LST <- sid[[T_LST]]
 
-# Theme first (its accents colour the doughnut slices), then the named ranges, so formulas written below resolve on the first pass.
+# Theme first (font, chart series and ring slices follow it), then the named ranges, so formulas written below resolve on the first pass.
 txn_name <- function(nm, col) fmt_named_range(S_TXN, nm, 5L, LAST_ROW, col, col)
 batch_format(ss, list(
-  fmt_theme_colors(accent1 = PAL[["blue"]], accent2 = PAL[["teal"]], accent3 = PAL[["amber"]], accent4 = PAL[["violet"]],
-                   accent5 = PAL[["sky"]], accent6 = PAL[["slate"]], text = "12161C", link = PAL[["blue"]]),
+  do.call(fmt_theme_colors, THEME_DEFAULT),
   fmt_named_range(S_LST, "month_start", 5L, 5L, 12L, 12L),
   fmt_named_range(S_LST, "prev_start",  6L, 6L, 12L, 12L),
   fmt_named_range(S_LST, "month_label", 7L, 7L, 12L, 12L),
@@ -188,6 +197,7 @@ batch_format(ss, list(
 # Cell writes (buffered, one API call) + the Transactions table
 # =============================================================================
 mrow <- function(i) 4L + i     # month i (1..12) sits on row 4+i in Lists, 5+i elsewhere
+CTRL <- c(2L, 11L); CTRL_A1 <- "Dashboard!$K$2"   # the month picker (Dashboard K2); Lists!L5 reads it
 
 # -- Lists --
 write_cell(ss, T_LST, 2, 2, "Lists")
@@ -201,7 +211,7 @@ for (i in seq_along(cats)) { write_cell(ss, T_LST, 4L + i, 4, cats[i]); write_ce
 for (i in seq_along(ACCOUNTS)) write_cell(ss, T_LST, 4L + i, 7, ACCOUNTS[i])
 write_cell(ss, T_LST, 5, 9, "Income"); write_cell(ss, T_LST, 6, 9, "Expense")
 write_cell(ss, T_LST, 5, 11, "month_start"); write_cell(ss, T_LST, 6, 11, "prev_start"); write_cell(ss, T_LST, 7, 11, "month_label")
-write_cell(ss, T_LST, 5, 12, '=IFERROR(IF(COUNTIF($B$5:$B$16,DATE(YEAR(Dashboard!$Q$2),MONTH(Dashboard!$Q$2),1))=0,MAX($B$5:$B$16),DATE(YEAR(Dashboard!$Q$2),MONTH(Dashboard!$Q$2),1)),MAX($B$5:$B$16))')
+write_cell(ss, T_LST, 5, 12, gsub("PICK", CTRL_A1, '=IFERROR(IF(COUNTIF($B$5:$B$16,DATE(YEAR(PICK),MONTH(PICK),1))=0,MAX($B$5:$B$16),DATE(YEAR(PICK),MONTH(PICK),1)),MAX($B$5:$B$16))', fixed = TRUE))
 write_cell(ss, T_LST, 6, 12, "=EDATE(L5,-1)")
 write_cell(ss, T_LST, 7, 12, '=TEXT(L5,"mmmm yyyy")')
 write_cell(ss, T_LST, 9, 11, "These three follow the month picker on the Dashboard and drive every formula.")
@@ -214,9 +224,10 @@ write_cell(ss, T_TXN, 5, 8, sprintf('=ARRAYFORMULA(IF(B5:B%d="","",DATE(YEAR(B5:
 write_block(ss, T_TXN, 4, 2, rbind(names(txn)))      # header row
 write_block(ss, T_TXN, 5, 2, txn)                      # ~370 rows as ONE buffered range
 
-# -- Budget (rows 6-14 categories, 15 total, 18-20 income and savings, 25-30 chart data) --
+# -- Budget (rows 6-14 categories, 15 total, 18-21 income, savings and settings, 23-42 chart data, 44-50 checks) --
 write_cell(ss, T_BUD, 2, 2, "Budget vs actual")
-write_cell(ss, T_BUD, 3, 2, '="Showing "&month_label&". Change the month on the Dashboard. Blue cells on yellow are inputs. Variance = budget minus actual: positive (green) is under budget."')
+write_cell(ss, T_BUD, 3, 2, '="In "&month_label&" you spent "&TEXT($D$15,"$#,##0")&" of a "&TEXT($C$15,"$#,##0")&" budget ("&IFERROR(TEXT($G$15,"0%"),$G$15)&")."')
+write_cell(ss, T_BUD, 4, 2, "Pick the month on the Dashboard. Blue cells are inputs. Variance = budget minus actual, so a negative variance (red) is over budget.")
 hdr_b <- c("Category", "Monthly budget", "Actual", "Variance", "Variance %", "Used", "Progress", "Status")
 for (j in seq_along(hdr_b)) write_cell(ss, T_BUD, 5, 1L + j, hdr_b[j])
 for (k in seq_along(CAT_EXP)) {
@@ -236,9 +247,11 @@ for (r in 6:15) {
   # Used: spending / budget. A zero or blank budget with spending reads "no budget" (counts as over budget below);
   # no budget and no spending stays blank.
   write_cell(ss, T_BUD, r, 7, sprintf('=IF(C%d<=0,IF(D%d>0,"%s",""),D%d/C%d)', r, r, NO_BUD, r, r))
-  # 1.2 is only the bar's display cap (120% of the track); 1 (= 100%) is what "over budget" means; "no budget" draws a full red bar
-  bar <- f_sparkline(sprintf("MIN(IF(ISNUMBER(G%d),G%d,1.2),1.2)", r, r), list(charttype = "bar", max = 1.2,
-           color1 = I(sprintf('IF(NOT(ISNUMBER(G%d)),"#E5484D",IF(G%d>1,"#E5484D",IF(G%d>=warn_at,"#F5A524","#18A957")))', r, r, r))))
+  # 1.2 is only the bar's display cap (120% of the track); 1 (= 100%) is what "over budget" means; "no budget" draws a full red bar.
+  # Two values on one grey track: the used share in the accent (red when over), then the rest of the track.
+  u <- sprintf("MIN(IF(ISNUMBER(G%d),G%d,1.2),1.2)", r, r)
+  bar <- f_sparkline(sprintf("{%s,1.2-%s}", u, u), list(charttype = "bar", max = 1.2, color2 = hx(COL_SEP_SUBTLE),
+           color1 = I(sprintf('IF(%s>1,"%s","%s")', u, hx(COL_NEGATIVE), hx(COL_ACCENT)))))
   write_cell(ss, T_BUD, r, 8, sprintf('=IF(G%d="","",%s)', r, fraw(bar)))
   write_cell(ss, T_BUD, r, 9, sprintf('=IF(G%d="","",IF(ISNUMBER(G%d),IF(G%d>1,"Over budget",IF(G%d>=warn_at,"Close to limit","On track")),"No budget"))', r, r, r, r))
 }
@@ -249,33 +262,35 @@ write_cell(ss, T_BUD, 19, 2, "Savings"); write_cell(ss, T_BUD, 19, 3, "=C18-C15"
 write_cell(ss, T_BUD, 20, 2, "Savings-rate goal"); write_cell(ss, T_BUD, 20, 3, SAVINGS_GOAL)
 write_cell(ss, T_BUD, 20, 4, "=IFERROR(D19/D18,0)"); write_cell(ss, T_BUD, 20, 5, "=(D20-C20)*100")   # percentage points
 write_cell(ss, T_BUD, 21, 2, "Warning threshold"); write_cell(ss, T_BUD, 21, 3, WARN_AT)
-write_cell(ss, T_BUD, 21, 4, "A category turns amber at this share of its budget (red above 100%). Drives the status, the bars and the Dashboard strip.")
-write_cell(ss, T_BUD, 23, 2, "Chart data: top spending categories for the selected month (feeds the Dashboard doughnut and Top 5 list)")
+write_cell(ss, T_BUD, 21, 4, "A category turns amber at this share of its budget (red above 100%). Drives the status, the bars and the Dashboard.")
+write_cell(ss, T_BUD, 23, 2, "Chart data: the four biggest categories this month and the rest (Dashboard ring and table)")
 write_cell(ss, T_BUD, 24, 2, "Category"); write_cell(ss, T_BUD, 24, 3, "Spent")
-for (k in 1:5) {
+for (k in 1:4) {
   write_cell(ss, T_BUD, 24L + k, 2, sprintf("=INDEX(SORT({$B$6:$B$14,$D$6:$D$14},2,FALSE),%d,1)", k))
   write_cell(ss, T_BUD, 24L + k, 3, sprintf("=INDEX(SORT({$B$6:$B$14,$D$6:$D$14},2,FALSE),%d,2)", k))
 }
-# whole dollars that add up: the rounded total minus the rounded top 5 (the Dashboard top-5 list shows this same cell)
-write_cell(ss, T_BUD, 30, 2, "Everything else"); write_cell(ss, T_BUD, 30, 3, "=ROUND(D15,0)-SUMPRODUCT(ROUND(C25:C29,0))")
-# chart data 2: share of budget used, biggest first (feeds the Dashboard budget chart); blanks count as 0, "no budget" as 200% (the axis top)
-write_cell(ss, T_BUD, 32, 2, "Chart data: share of each budget used, sorted (feeds the Dashboard budget chart)")
-write_cell(ss, T_BUD, 33, 2, "Category"); write_cell(ss, T_BUD, 33, 3, "% of budget used"); write_cell(ss, T_BUD, 33, 4, "100% limit")
+# at most five ring slices; whole dollars that add up: the rounded total minus the rounded top 4 (the Dashboard table shows this same cell)
+write_cell(ss, T_BUD, 29, 2, "Everything else"); write_cell(ss, T_BUD, 29, 3, "=ROUND(D15,0)-SUMPRODUCT(ROUND(C25:C28,0))")
+# chart data 2: share of budget used, biggest first (feeds the Dashboard budget table and chart); blanks count as 0, "no budget" as 200% (the axis top).
+# Within / Over split the bars into two stacked series, so the over-budget bars turn red for whichever month is picked.
+write_cell(ss, T_BUD, 32, 2, "Chart data: share of each budget used, biggest first (Dashboard budget table and chart)")
+for (j in 1:4) write_cell(ss, T_BUD, 33, 1L + j, c("Category", "% of budget used", "Within budget", "Over budget")[j])
 for (k in 1:9) {
+  r <- 33L + k
   srt <- '{$B$6:$B$14,ARRAYFORMULA(IF(ISNUMBER($G$6:$G$14),$G$6:$G$14,IF($G$6:$G$14="",0,2)))}'
-  write_cell(ss, T_BUD, 33L + k, 2, sprintf("=INDEX(SORT(%s,2,FALSE),%d,1)", srt, k))
-  write_cell(ss, T_BUD, 33L + k, 3, sprintf("=INDEX(SORT(%s,2,FALSE),%d,2)", srt, k))
-  write_cell(ss, T_BUD, 33L + k, 4, 1)
+  write_cell(ss, T_BUD, r, 2, sprintf("=INDEX(SORT(%s,2,FALSE),%d,1)", srt, k))
+  write_cell(ss, T_BUD, r, 3, sprintf("=INDEX(SORT(%s,2,FALSE),%d,2)", srt, k))
+  write_cell(ss, T_BUD, r, 4, sprintf('=IF(C%d<=1,C%d,"")', r, r)); write_cell(ss, T_BUD, r, 5, sprintf('=IF(C%d>1,C%d,"")', r, r))
 }
 # self-checks: raw-data tests, so display rounding cannot trip them. Pivot total = largest number on its Grand Total row.
 write_cell(ss, T_BUD, 44, 2, "Self-checks (live): every line should read OK")
 write_cell(ss, T_BUD, 45, 2, "Check"); write_cell(ss, T_BUD, 45, 6, "Result"); write_cell(ss, T_BUD, 45, 7, "Status")
 chk <- list(
-  list("Every Expense row this month sits in a budgeted category (difference in $)",
+  list("This month's Expense rows all sit in a budgeted category (difference, $)",
        '=ROUND(SUMIFS(txn_amt,txn_type,"Expense",txn_month,month_start)-SUM($D$6:$D$14),2)'),
-  list("Pivot table total equals Trends 12-month spending (difference in $)",
+  list("Pivot table total equals Trends 12-month spending (difference, $)",
        '=ROUND(IFERROR(MAX(INDEX(Trends!$B$24:$Q$40,MATCH("Grand Total",Trends!$B$24:$B$40,0),0)),0)-Trends!$D$18,2)'),
-  list("Transactions dated outside the 12 months (count; move the window with the first month on Lists)",
+  list("Rows dated outside the 12 months (count; move the window on Lists)",
        '=COUNTIFS(txn_date,"<"&Lists!$B$5)+COUNTIFS(txn_date,">="&EDATE(Lists!$B$16,1))'),
   list("Rows whose Type does not match their Category (count)",
        '=COUNTA(txn_type)-SUMPRODUCT(COUNTIFS(txn_type,Lists!$E$5:$E$16,txn_cat,Lists!$D$5:$D$16))'))
@@ -289,8 +304,9 @@ write_cell(ss, T_BUD, 50, 7, '=IF(COUNTIF(G46:G49,"OK")=4,"All pass","Review")')
 
 # -- Net Worth (rows 6-17 months) --
 write_cell(ss, T_NW, 2, 2, "Net worth")
-write_cell(ss, T_NW, 3, 2, "Month-end balances (sample data). Blue cells are inputs: type your own balances and the totals, changes and charts follow. Investments and retirement also grow with market gains and employer contributions that Transactions does not show.")
-write_cell(ss, T_NW, 4, 3, "ASSETS"); write_cell(ss, T_NW, 4, 8, "LIABILITIES"); write_cell(ss, T_NW, 4, 12, "NET WORTH")
+write_cell(ss, T_NW, 3, 2, '=LET(v,SUMIFS($L$6:$L$17,$B$6:$B$17,month_start),"Net worth is "&TEXT(v,"$#,##0")&" at the end of "&month_label&", "&TEXT(v-$L$6,"+$#,##0;-$#,##0")&" since the end of "&TEXT($B$6,"mmmm yyyy")&".")')
+write_cell(ss, T_NW, 20, 2, "Month-end balances (sample data). Blue cells are inputs: type your own balances and the totals, changes and charts follow. Investments and retirement also grow with market gains and employer contributions that Transactions does not show.")
+write_cell(ss, T_NW, 4, 3, "Assets"); write_cell(ss, T_NW, 4, 8, "Liabilities"); write_cell(ss, T_NW, 4, 12, "Net worth")
 hdr_n <- c("Month", "Checking", "Savings", "Investments", "Retirement", "Total assets", "Credit card",
            "Car loan", "Student loan", "Total liabilities", "Net worth", "Change vs last month", "Change %", "Axis label")
 for (j in seq_along(hdr_n)) write_cell(ss, T_NW, 5, 1L + j, hdr_n[j])
@@ -305,14 +321,16 @@ for (i in seq_len(N_MONTHS)) {
   write_cell(ss, T_NW, r, 11, sprintf("=SUM(H%d:J%d)", r, r))
   write_cell(ss, T_NW, r, 12, sprintf("=G%d-K%d", r, r))
   if (i > 1) { write_cell(ss, T_NW, r, 13, sprintf("=L%d-L%d", r, r - 1)); write_cell(ss, T_NW, r, 14, f_safe_div(sprintf("M%d", r), sprintf("L%d", r - 1))) }
-  else { write_cell(ss, T_NW, r, 13, "–"); write_cell(ss, T_NW, r, 14, "–") }
-  # chart axis label, text so every month is labelled: month name, year on the first month and each January; picked month gets a dot
-  write_cell(ss, T_NW, r, 15, sprintf('=TEXT($B%d,"mmm")&IF(OR(MONTH($B%d)=1,$B%d=MIN($B$6:$B$17))," "&TEXT($B%d,"yyyy"),"")&IF($B%d=month_start," ●","")', r, r, r, r, r))
+  else { write_cell(ss, T_NW, r, 13, "-"); write_cell(ss, T_NW, r, 14, "-") }
+  # chart axis label, text so every month is labelled: the month's initial, because on the 432 px Dashboard chart
+  # even "Oct" labels turn diagonal (checked live); the Month column carries the year. Picked month gets a dot.
+  write_cell(ss, T_NW, r, 15, sprintf('=LEFT(TEXT($B%d,"mmm"),1)&IF($B%d=month_start," ●","")', r, r))
 }
 
 # -- Trends (rows 6-17 months, 18 total, 19 average; pivot from row 24) --
 write_cell(ss, T_TRD, 2, 2, "Trends")
-write_cell(ss, T_TRD, 3, 2, "Twelve months of cash flow, plus a native pivot table of spending by category and month. Everything here is a formula or pivot over Transactions, so there are no blue input cells.")
+write_cell(ss, T_TRD, 3, 2, '="Over 12 months income was "&TEXT($C$18,"$#,##0")&" and spending "&TEXT($D$18,"$#,##0")&", so "&TEXT($F$18,"0%")&" of income was saved."')
+write_cell(ss, T_TRD, 4, 2, "Every figure here is a formula or a pivot table over Transactions, so this tab has no inputs.")
 for (j in 1:6) write_cell(ss, T_TRD, 5, 1L + j, c("Month", "Income", "Spending", "Savings", "Savings rate", "Axis label")[j])
 for (i in seq_len(N_MONTHS)) {
   r <- 5L + i
@@ -332,415 +350,230 @@ write_cell(ss, T_TRD, 22, 2, "Spending by category and month (native pivot table
 # The note sits ABOVE the pivot (row 23) so the pivot can grow downward without ever running into it.
 write_cell(ss, T_TRD, 23, 2, "Each row is shaded on its own scale (darker = that category's busiest months). Housing is a fixed cost, so it is left unshaded.")
 
-# -- Dashboard --
-write_cell(ss, T_DASH, 2, 2, "Personal Finance Tracker")
-write_cell(ss, T_DASH, 2, 10, "SAMPLE DATA")
-write_cell(ss, T_DASH, 2, 14, "Select month ▸")
-write_cell(ss, T_DASH, 2, 17, as.character(months[SELECTED]))
-# one-sentence takeaway for the selected month (over-budget list capped at 3 names so it stays on one line)
+# -- Dashboard. Grid: A16 | B224 | C-F 4x112 | G24 | H-J 3x96 | K144 | L16 (K holds the picker and the badge) --
+# rows: 2-4 title, finding, meta | 6-9 KPI strip + note | 11-24 budget table + chart | 26-35 spending breakdown + ring |
+#       37-52 twelve-month charts | 54-61 about
+write_cell(ss, T_DASH, 2, 2, '="Personal finance, "&month_label')
+write_cell(ss, T_DASH, 2, CTRL[2] - 1L, "Month")
+write_cell(ss, T_DASH, CTRL[1], CTRL[2], as.character(months[SELECTED]))
+# the finding: one live sentence about the picked month (over-budget names listed when there are 3 or fewer)
 is_over  <- sprintf('(Budget!$G$6:$G$14="%s")+ISNUMBER(Budget!$G$6:$G$14)*(Budget!$G$6:$G$14>1)', NO_BUD)   # over 100%, or spending with no budget
 over_n   <- paste0('SUMPRODUCT(', is_over, ')')
-over_who <- paste0('IFERROR(TEXTJOIN(", ",TRUE,FILTER(Budget!$B$6:$B$14,', is_over, ')),"")')
-write_cell(ss, T_DASH, 3, 2, paste0('=LET(n,', over_n, ',who,', over_who, ',"Showing "&month_label&" · "&IF(n=0,"every category is within budget",',
-  'IF(n>3,n&" categories are over budget","over budget: "&who))&" · savings rate "&TEXT(K6,"0%")&" vs "&TEXT(Budget!$C$20,"0%")&" goal")'))
-write_cell(ss, T_DASH, 3, 15, "View only? File > Make a copy to use the picker")
-kcol <- c(2L, 5L, 8L, 11L, 14L, 17L)
-k_lab <- c("INCOME", "SPENDING", "SAVINGS", "SAVINGS RATE", "NET WORTH", "BUDGET USED")
-for (k in 1:6) write_cell(ss, T_DASH, 5, kcol[k], k_lab[k])
+over_who <- paste0('REGEXREPLACE(IFERROR(TEXTJOIN(", ",TRUE,FILTER(Budget!$B$6:$B$14,', is_over, ')),""),", ([^,]*)$"," and $1")')
+write_cell(ss, T_DASH, 3, 2, paste0('=LET(n,', over_n, ',who,', over_who, ',r,Budget!$D$20,g,Budget!$C$20,',
+  'IF(n=0,"Every category stayed within budget",IF(n>3,n&" of 9 categories ran over budget",who&" ran over budget"))',
+  '&"; the savings rate of "&TEXT(r,"0%")&IF(r>=g,IF(n>0," still beats"," beats")," misses")&" the "&TEXT(g,"0%")&" goal.")'))
+write_cell(ss, T_DASH, 4, 2, sprintf('="Sample data · "&COUNTA(txn_amt)&" transactions · USD · built %s · View only? File > Make a copy to use the month picker"', Sys.Date()))
+write_cell(ss, T_DASH, 4, CTRL[2], '=IF(Budget!$G$50="All pass","✓ Self-checks pass","✕ See Budget checks")')
+# KPI strip: label / value / change, B (lead) to F
 prior <- function(rng, tab = "Trends", key = "$B$6:$B$17") sprintf("SUMIFS(%s!%s,%s!%s,prev_start)", tab, rng, tab, key)
 first <- 'COUNTIF(Trends!$B$6:$B$17,prev_start)=0'
-write_cell(ss, T_DASH, 6, 2, "=Budget!$D$18")
-write_cell(ss, T_DASH, 6, 5, "=Budget!$D$15")
-write_cell(ss, T_DASH, 6, 8, "=B6-E6")
-write_cell(ss, T_DASH, 6, 11, "=IFERROR(H6/B6,0)")
-write_cell(ss, T_DASH, 6, 14, "=SUMIFS('Net Worth'!$L$6:$L$17,'Net Worth'!$B$6:$B$17,month_start)")
-write_cell(ss, T_DASH, 6, 17, "=IFERROR(Budget!$D$15/Budget!$C$15,0)")
-pct_sub <- function(cell, rng) paste0('=IF(', first, ',"first month in sample",LET(p,', prior(rng),
-  ',IF(p=0,"no data last month",IF(', cell, '>=p,"\u25b2 ","\u25bc ")&TEXT(ABS(', cell, '/p-1),"0.0%")&" vs last month")))')
-usd_sub <- function(cell, rng, tab = "Trends", key = "$B$6:$B$17") paste0('=IF(COUNTIF(', tab, '!', key,
-  ',prev_start)=0,"first month in sample",LET(p,', prior(rng, tab, key),
-  ',IF(', cell, '>=p,"\u25b2 ","\u25bc ")&TEXT(ABS(', cell, '-p),"$#,##0")&" vs last month"))')
-write_cell(ss, T_DASH, 7, 2, pct_sub("B6", "$C$6:$C$17"))
-write_cell(ss, T_DASH, 7, 5, pct_sub("E6", "$D$6:$D$17"))
-write_cell(ss, T_DASH, 7, 8, usd_sub("H6", "$E$6:$E$17"))
-write_cell(ss, T_DASH, 7, 11, '="Goal "&TEXT(Budget!$C$20,"0%")&IF(K6>=Budget!$C$20," · on track"," · below goal")')
-write_cell(ss, T_DASH, 7, 14, usd_sub("N6", "$L$6:$L$17", "'Net Worth'", "$B$6:$B$17"))
-write_cell(ss, T_DASH, 7, 17, '=TEXT(Budget!$D$15,"$#,##0")&" of "&TEXT(Budget!$C$15,"$#,##0")&" budget"')
-write_cell(ss, T_DASH, 9, 2, "Budget health")
-write_cell(ss, T_DASH, 9, 10, '="green: under "&TEXT(warn_at,"0%")&" of budget  ·  amber: "&TEXT(warn_at,"0%")&" to 100%  ·  red: over budget, or spending with no budget"')
-for (i in 1:9) {
-  c1 <- 2L + 2L * (i - 1L)
-  write_cell(ss, T_DASH, 10, c1, sprintf("=Budget!$B%d", 5L + i))
-  write_cell(ss, T_DASH, 11, c1, sprintf("=Budget!$G%d", 5L + i))
+K_COLS <- c(2:6, 8L)   # G is the gutter; the sixth KPI fills H-K under the picker
+k_lab <- c('="Spent in "&month_label', "Income", "Saved", "Savings rate", "Net worth", "Over budget")
+k_val <- c("=Budget!$D$15", "=Budget!$D$18", "=C7-B7", "=IFERROR(D7/C7,0)",
+           "=SUMIFS('Net Worth'!$L$6:$L$17,'Net Worth'!$B$6:$B$17,month_start)",
+           paste0('=', over_n, '&" of "&COUNTA(Budget!$B$6:$B$14)'))
+k_chg <- c('=IFERROR(TEXT(B7/Budget!$C$15,"0%")&" of the "&TEXT(Budget!$C$15,"$#,##0")&" budget","no budget set")',
+           paste0('=IF(', first, ',"no prior month",LET(p,', prior("$C$6:$C$17"), ',IF(p=0,"-",C7/p-1)))'),
+           paste0('=IF(', first, ',"no prior month",D7-', prior("$E$6:$E$17"), ')'),
+           paste0('=IF(', first, ',"no prior month",(E7-', prior("$F$6:$F$17"), ')*100)'),
+           paste0("=IF(COUNTIF('Net Worth'!$B$6:$B$17,prev_start)=0,\"no prior month\",F7-", prior("$L$6:$L$17", "'Net Worth'"), ")"),
+           paste0('=LET(n,', over_n, ',w,', over_who, ',IF(n=0,"None",IF(n>3,n&" categories",w)))'))   # names, like the finding
+for (k in 1:6) { kc <- K_COLS[k]; write_cell(ss, T_DASH, 6, kc, k_lab[k]); write_cell(ss, T_DASH, 7, kc, k_val[k]); write_cell(ss, T_DASH, 8, kc, k_chg[k]) }
+write_cell(ss, T_DASH, 9, 2, paste0('=IF(', first, ',"The first month in the sample has nothing to compare with.","Changes are vs "&TEXT(prev_start,"mmmm yyyy")&": green is better, red is worse.")'))
+# Budget by category, sorted by share used (Budget!B34:B42), with the budget chart beside it
+write_cell(ss, T_DASH, 11, 2, "Budget by category")
+write_cell(ss, T_DASH, 11, 6, paste0('=', over_n, '&" of 9 over budget"'))
+for (j in 1:5) write_cell(ss, T_DASH, 12, 1L + j, c("Category", "Budget", "Spent", "Used", "Status")[j])
+for (k in 1:9) {
+  r <- 12L + k; look <- function(col) sprintf("=INDEX(Budget!$%s$6:$%s$14,MATCH($B%d,Budget!$B$6:$B$14,0))", col, col, r)
+  write_cell(ss, T_DASH, r, 2, sprintf("=Budget!$B$%d", 33L + k))
+  for (j in 1:4) write_cell(ss, T_DASH, r, 2L + j, look(c("C", "D", "G", "I")[j]))
 }
-R_TOP <- 45L                                   # Top-5 panel title row
-write_cell(ss, T_DASH, R_TOP, 2, '="Top 5 spending categories  ·  "&month_label')
-write_cell(ss, T_DASH, R_TOP, 11, "About this sample")
-write_cell(ss, T_DASH, R_TOP, 17, '=IF(Budget!$G$50="All pass","✓ self-checks pass","⚠ see Budget checks")')
-for (j in list(c(2, "#"), c(3, "Category"), c(6, "Spent"), c(8, "Share"), c(9, "")))
-  write_cell(ss, T_DASH, R_TOP + 1L, as.integer(j[1]), j[2])
-for (k in 1:6) {
-  r <- R_TOP + 1L + k
-  write_cell(ss, T_DASH, r, 2, if (k <= 5) k else "•")
-  write_cell(ss, T_DASH, r, 3, sprintf("=Budget!$B$%d", 24L + k))
-  # whole dollars that add up: top 5 rounded; "everything else" is Budget!C30 (the rounded total minus those)
-  write_cell(ss, T_DASH, r, 6, if (k <= 5) sprintf("=ROUND(Budget!$C$%d,0)", 24L + k) else "=Budget!$C$30")
-  write_cell(ss, T_DASH, r, 8, sprintf("=IFERROR(F%d/$F$%d,0)", r, R_TOP + 8L))
-  bar <- f_sparkline(sprintf("H%d", r), list(charttype = "bar", max = I(sprintf("$H$%d", R_TOP + 2L)),
-           color1 = paste0("#", unname(PAL[c("blue", "teal", "amber", "violet", "sky", "slate")])[k])))
-  write_cell(ss, T_DASH, r, 9, sprintf('=IF($H$%d=0,"",%s)', R_TOP + 2L, fraw(bar)))
+write_cell(ss, T_DASH, 22, 2, "Total"); write_cell(ss, T_DASH, 22, 3, "=Budget!$C$15")
+write_cell(ss, T_DASH, 22, 4, "=Budget!$D$15"); write_cell(ss, T_DASH, 22, 5, "=Budget!$G$15")
+write_cell(ss, T_DASH, 24, 2, '="Status: amber from "&TEXT(warn_at,"0%")&" of a budget, red over 100% or spending with no budget. Budgets and the threshold are set on the Budget tab."')
+# Where the money went: the ring's legend as a table (each bar is its slice's colour), whole dollars that add up
+write_cell(ss, T_DASH, 26, 2, '="Where the money went in "&month_label')
+for (j in 1:3) write_cell(ss, T_DASH, 27, 1L + j, c("Category", "Spent", "Share")[j])
+for (k in 1:5) {
+  r <- 27L + k
+  write_cell(ss, T_DASH, r, 2, sprintf("=Budget!$B$%d", 24L + k))
+  write_cell(ss, T_DASH, r, 3, if (k <= 4) sprintf("=ROUND(Budget!$C$%d,0)", 24L + k) else "=Budget!$C$29")
+  write_cell(ss, T_DASH, r, 4, sprintf("=IFERROR(C%d/$C$33,0)", r))
+  bar <- f_sparkline(sprintf("D%d", r), list(charttype = "bar", max = I("MAX($D$28:$D$32)"), color1 = paste0("#", CHART_PALETTE[k])))
+  write_cell(ss, T_DASH, r, 5, sprintf('=IF(MAX($D$28:$D$32)=0,"",%s)', fraw(bar)))
 }
-write_cell(ss, T_DASH, R_TOP + 8L, 3, "Total spending")
-write_cell(ss, T_DASH, R_TOP + 8L, 6, sprintf("=SUM(F%d:F%d)", R_TOP + 2L, R_TOP + 7L))
-write_cell(ss, T_DASH, R_TOP + 8L, 8, sprintf("=SUM(H%d:H%d)", R_TOP + 2L, R_TOP + 7L))
+write_cell(ss, T_DASH, 33, 2, "Total spending"); write_cell(ss, T_DASH, 33, 3, "=SUM(C28:C32)"); write_cell(ss, T_DASH, 33, 4, "=SUM(D28:D32)")
+write_cell(ss, T_DASH, 35, 2, "The four biggest categories this month and everything else, in whole dollars that add up to the total.")
+write_cell(ss, T_DASH, 37, 2, "Twelve months")
+write_cell(ss, T_DASH, 37, 11, "● marks the picked month")
+write_cell(ss, T_DASH, 54, 2, "About this sample")
 about <- c("Sample data: all numbers are synthetic. No real people, merchants or accounts.",
            "Built with the r-googlesheets4 skill (github.com/salvadoraveldano/r-googlesheets4)",
            "Built on googlesheets4 by Jennifer Bryan and Posit (googlesheets4.tidyverse.org)",
-           "How to use: pick a month at the top, then edit the blue cells on any tab.",
-           "Input", "Formula", "Month picker: updates the cards, health strip, doughnut, budget chart and top 5. The trend charts show all 12 months (picked month marked ●).")
-for (k in seq_along(about)) write_cell(ss, T_DASH, R_TOP + 1L + k, 11, about[k])
-write_cell(ss, T_DASH, R_TOP + 6L, 13, "Blue text, often on pale yellow: a value you can change.")
-write_cell(ss, T_DASH, R_TOP + 7L, 13, "Black text: a formula. Editing it shows a warning.")
+           "How to use: pick a month at the top right, then edit the blue cells on any tab.",
+           "Input", "Formula", "The month picker updates the KPIs, the budget table and chart, and the spending breakdown. The 12-month charts show every month.")
+for (k in seq_along(about)) write_cell(ss, T_DASH, 54L + k, 2, about[k])
+write_cell(ss, T_DASH, 59, 3, "Blue text on pale blue: a value you can change.")
+write_cell(ss, T_DASH, 60, 3, "Black text: a formula. Editing it shows a warning.")
 
 flush_writes(ss, strict = TRUE)
 
 # =============================================================================
 # Formatting, one batch per tab (strict: stops on any HTTP error)
 # =============================================================================
-# Layout helpers: the skill's style presets (STYLE_BODY, STYLE_TITLE, STYLE_BRAND_SECTION_HEADER) with this sheet's sizes.
-body_all <- function(sid, nr, nc) apply_style(sid, 1, nr, 1, nc, STYLE_BODY, font_color = COL_INK)
-title_rows <- function(b, sid, last_col, title_h = 38L) {
-  b$push(apply_style(sid, 2, 2, 2, last_col, STYLE_TITLE, font_size = 22, font_color = COL_INK))
-  b$push(fmt_cells(sid, 3, 3, 2, last_col, font_size = 10, font_color = COL_SLATE, valign = "MIDDLE"))
-  b$push(fmt_row_height(sid, 1, 1, 8L)); b$push(fmt_row_height(sid, 2, 2, title_h)); b$push(fmt_row_height(sid, 3, 3, 22L))
-}
-header_row <- function(b, sid, r, c1, c2, h = 34L, fill = COL_BRAND) {
-  b$push(apply_style(sid, r, r, c1, c2, STYLE_BRAND_SECTION_HEADER, bg_color = fill, font_size = 10,
-                     halign = "CENTER", wrap = TRUE))
-  b$push(fmt_row_height(sid, r, r, h))
-}
-input_cells <- function(b, sid, r1, r2, c1, c2, ...) {
-  b$push(fmt_cells(sid, r1, r2, c1, c2, font_color = COL_INPUT_FG, bg_color = COL_INPUT_BG, ...))
-  b$push(fmt_borders(sid, r1, r2, c1, c2, inner_h = list(style = "SOLID", color = COL_WHITE),
-                     inner_v = list(style = "SOLID", color = COL_WHITE)))
-}
+# fmt_tab_base() lays the body style, gutters, widths and the title/finding/meta rows (2-4); later requests in the
+# same batch win, so the tables below reset rows 4-5 where a tab's header sits there.
 
 # ---- Lists ----
 b <- new_batch()
-b$push(body_all(S_LST, 40, 14)); title_rows(b, S_LST, 12)
-b$push(fmt_col_widths(S_LST, c(16, 140, 24, 130, 80, 24, 120, 24, 90, 24, 130, 160)))
-header_row(b, S_LST, 4, 2, 2); header_row(b, S_LST, 4, 4, 5); header_row(b, S_LST, 4, 7, 7)
-header_row(b, S_LST, 4, 9, 9); header_row(b, S_LST, 4, 11, 12)
-b$push(fmt_cells(S_LST, 4, 4, 2, 12, halign = "LEFT"))
+b$push(fmt_tab_base(S_LST, 40, 13, "model", widths = c(140, 24, 130, 80, 24, 120, 24, 90, 24, 130, 160), inputs = TRUE, freeze_rows = 4))
+for (g in list(c(16, 2, 2), c(16, 4, 5), c(7, 7, 7), c(6, 9, 9), c(7, 11, 12))) {
+  b$push(col_header(S_LST, 4, g[2], g[3], ink = TRUE)); b$push(fmt_table_body(S_LST, 5, g[1], g[2], g[3]))
+}
 b$push(fmt_cells(S_LST, 5, 16, 2, 2, numfmt = NF_MONTH_LONG, halign = "LEFT"))
-input_cells(b, S_LST, 5, 5, 2, 2, bold = TRUE, numfmt = NF_MONTH_LONG, halign = "LEFT")   # first month: the one input
-b$push(fmt_cells(S_LST, 5, 7, 11, 12, font_color = COL_SLATE, halign = "LEFT"))
-b$push(fmt_cells(S_LST, 5, 5, 12, 12, numfmt = NF_DAY))
-b$push(fmt_cells(S_LST, 6, 6, 12, 12, numfmt = NF_DAY))
-b$push(fmt_cells(S_LST, 9, 9, 11, 11, font_size = 9, italic = TRUE, font_color = COL_SLATE))
-b$push(fmt_tab_color(S_LST, hex_to_color(PAL[["slate"]])))
-b$push(fmt_freeze(S_LST, rows = 4))
-b$push(fmt_gridlines(S_LST, show = TRUE))
+b$push(apply_style(S_LST, 5, 5, 2, 2, STYLE_INPUT))                       # first month: the one input
+b$push(fmt_cells(S_LST, 5, 7, 11, 11, font_color = COL_TEXT_3))
+b$push(fmt_cells(S_LST, 5, 6, 12, 12, numfmt = NF_DAY, halign = "LEFT")); b$push(fmt_cells(S_LST, 7, 7, 12, 12, halign = "LEFT"))
+b$push(apply_style(S_LST, 9, 9, 11, 11, STYLE_NOTE))
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Transactions ----
+BAND_LAST <- 4L + nrow(txn) + 50L       # the input fill covers the used rows plus a margin: to LAST_ROW it prints ~20 blank blue pages
 b <- new_batch()
-b$push(body_all(S_TXN, LAST_ROW, 10)); title_rows(b, S_TXN, 8)
-b$push(fmt_col_widths(S_TXN, c(16, 110, 200, 120, 110, 100, 90, 100)))
-header_row(b, S_TXN, 4, 2, 8, h = 30L)
+b$push(fmt_tab_base(S_TXN, LAST_ROW, 9, "model", widths = c(110, 200, 120, 110, 100, 90, 100), inputs = TRUE, freeze_rows = 4))
+b$push(fmt_gridlines(S_TXN, show = TRUE))
+b$push(col_header(S_TXN, 4, 2, 8, num = 6, ink = TRUE))
 b$push(fmt_cells(S_TXN, 5, LAST_ROW, 2, 2, numfmt = NF_DAY, halign = "LEFT"))
-b$push(fmt_cells(S_TXN, 5, LAST_ROW, 3, 5, halign = "LEFT"))
 b$push(fmt_cells(S_TXN, 5, LAST_ROW, 6, 6, numfmt = NF_USD2, halign = "RIGHT"))
-b$push(fmt_cells(S_TXN, 5, LAST_ROW, 7, 7, halign = "CENTER"))
-b$push(fmt_cells(S_TXN, 5, LAST_ROW, 8, 8, numfmt = NF_MONTH, halign = "LEFT", font_color = COL_SLATE))
+b$push(fmt_cells(S_TXN, 5, LAST_ROW, 8, 8, numfmt = NF_MONTH, halign = "LEFT", font_color = COL_TEXT_3))
+b$push(fmt_cells(S_TXN, 4, LAST_ROW, 7, 7, halign = "CENTER"))            # Type, clear of the right-aligned Amount
 b$push(fmt_cells(S_TXN, 5, LAST_ROW, 2, 7, font_color = COL_INPUT_FG))      # typed-in columns: blue, also on rows you add
-b$push(fmt_cells(S_TXN, 4, 4, 2, 5, halign = "LEFT")); b$push(fmt_cells(S_TXN, 4, 4, 6, 6, halign = "RIGHT")); b$push(fmt_cells(S_TXN, 4, 4, 7, 7, halign = "CENTER")); b$push(fmt_cells(S_TXN, 4, 4, 8, 8, halign = "LEFT"))
-b$push(fmt_tab_color(S_TXN, hex_to_color(PAL[["teal"]])))
-b$push(fmt_freeze(S_TXN, rows = 4)); b$push(fmt_gridlines(S_TXN, show = TRUE))
+b$push(apply_style(S_TXN, 5, BAND_LAST, 2, 7, STYLE_INPUT))
+b$push(fmt_borders(S_TXN, 5, BAND_LAST, 2, 7, inner_h = list(style = "SOLID", color = COL_WHITE)))   # rows stay readable on the fill
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Budget ----
 b <- new_batch()
-b$push(body_all(S_BUD, 55, 12)); title_rows(b, S_BUD, 9)
-b$push(fmt_col_widths(S_BUD, c(16, 170, 110, 110, 110, 100, 80, 190, 120, 16)))
-header_row(b, S_BUD, 5, 2, 9, h = 32L)
-b$push(fmt_cells(S_BUD, 5, 5, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_BUD, 5, 5, 3, 7, halign = "RIGHT"))
-# tight rows so the first printed landscape page ends after the top-5 chart-data block (no orphaned "Everything else" row on page 2)
-b$push(fmt_row_height(S_BUD, 4, 4, 12L)); b$push(fmt_row_height(S_BUD, 6, 15, 24L)); b$push(fmt_row_height(S_BUD, 16, 16, 10L))
-b$push(fmt_cells(S_BUD, 6, 15, 3, 3, numfmt = NF_USD, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 6, 15, 4, 5, numfmt = NF_USD2C, halign = "RIGHT"))   # cents: the column adds up exactly
-b$push(fmt_cells(S_BUD, 6, 15, 6, 7, numfmt = NF_PCT1, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 6, 15, 9, 9, halign = "CENTER", bold = TRUE, font_size = 10))
-b$push(fmt_borders(S_BUD, 6, 15, 2, 9, inner_h = list(style = "SOLID", color = COL_HAIR),
-                   bottom = list(style = "SOLID", color = COL_HAIR)))
-input_cells(b, S_BUD, 6, 14, 3, 3, numfmt = NF_USD, halign = "RIGHT")
-b$push(apply_style(S_BUD, 15, 15, 2, 9, STYLE_BRAND_SUBTOTAL, font_size = 11))   # 11: back from the status column's 10
-b$push(fmt_borders(S_BUD, 15, 15, 2, 9, top = list(style = "SOLID", color = COL_BRAND)))
-header_row(b, S_BUD, 17, 2, 6, h = 26L, fill = COL_BRAND_DEEP)
-b$push(fmt_cells(S_BUD, 17, 17, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_BUD, 17, 17, 3, 6, halign = "RIGHT"))
-b$push(fmt_row_height(S_BUD, 18, 21, 24L)); b$push(fmt_row_height(S_BUD, 22, 22, 12L)); b$push(fmt_row_height(S_BUD, 23, 23, 18L))
-b$push(fmt_cells(S_BUD, 18, 19, 3, 3, numfmt = NF_USD, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 18, 19, 4, 5, numfmt = NF_USD2C, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 18, 19, 6, 6, numfmt = NF_PCT1, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 20, 20, 3, 4, numfmt = NF_PCT1, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 20, 20, 5, 5, numfmt = NF_PTS, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 18, 21, 2, 2, bold = TRUE))
-b$push(fmt_cells(S_BUD, 21, 21, 4, 4, font_size = 9, italic = TRUE, font_color = COL_SLATE, halign = "LEFT"))
-b$push(fmt_borders(S_BUD, 18, 21, 2, 6, inner_h = list(style = "SOLID", color = COL_HAIR), bottom = list(style = "SOLID", color = COL_HAIR)))
-input_cells(b, S_BUD, 18, 18, 3, 3, numfmt = NF_USD, halign = "RIGHT")
-input_cells(b, S_BUD, 20, 21, 3, 3, numfmt = NF_PCT0, halign = "RIGHT")   # savings goal, warning threshold
-b$push(fmt_cells(S_BUD, 23, 23, 2, 2, font_size = 10, bold = TRUE, font_color = COL_SLATE))
-header_row(b, S_BUD, 24, 2, 3, h = 24L, fill = hex_to_color(PAL[["slate"]]))
-b$push(fmt_row_height(S_BUD, 25, 30, 18L))
-b$push(fmt_cells(S_BUD, 24, 24, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_BUD, 24, 24, 3, 3, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 25, 30, 3, 3, numfmt = NF_USD, halign = "RIGHT", font_color = COL_SLATE))
-b$push(fmt_cells(S_BUD, 25, 30, 2, 2, font_color = COL_SLATE))
-# chart data 2 (sorted % used) and the self-checks block
-b$push(fmt_row_height(S_BUD, 31, 31, 14L)); b$push(fmt_row_height(S_BUD, 32, 32, 20L)); b$push(fmt_row_height(S_BUD, 34, 42, 18L))
-b$push(fmt_cells(S_BUD, 32, 32, 2, 2, font_size = 10, bold = TRUE, font_color = COL_SLATE))
-header_row(b, S_BUD, 33, 2, 4, h = 32L, fill = hex_to_color(PAL[["slate"]]))
-b$push(fmt_cells(S_BUD, 33, 33, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_BUD, 33, 33, 3, 4, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 34, 42, 3, 4, numfmt = NF_PCT0, halign = "RIGHT", font_color = COL_SLATE))
-b$push(fmt_cells(S_BUD, 34, 42, 2, 2, font_color = COL_SLATE))
-b$push(fmt_row_height(S_BUD, 43, 43, 14L)); b$push(fmt_row_height(S_BUD, 44, 44, 20L))
-b$push(fmt_cells(S_BUD, 44, 44, 2, 2, font_size = 10, bold = TRUE, font_color = COL_SLATE))
-header_row(b, S_BUD, 45, 2, 8, h = 24L, fill = hex_to_color(PAL[["slate"]]))
-b$push(fmt_merge(S_BUD, 45, 45, 2, 5)); b$push(fmt_merge(S_BUD, 45, 45, 7, 8))
-b$push(fmt_cells(S_BUD, 45, 45, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_BUD, 45, 45, 6, 6, halign = "RIGHT"))
-b$push(fmt_row_height(S_BUD, 46, 49, 32L)); b$push(fmt_row_height(S_BUD, 50, 50, 26L))
-for (r in 46:50) { b$push(fmt_merge(S_BUD, r, r, 2, 5)); b$push(fmt_merge(S_BUD, r, r, 7, 8)) }
-b$push(fmt_cells(S_BUD, 46, 50, 2, 8, valign = "MIDDLE"))
-b$push(fmt_cells(S_BUD, 46, 49, 2, 5, font_size = 10, wrap = TRUE, valign = "MIDDLE", halign = "LEFT"))
-b$push(fmt_cells(S_BUD, 46, 47, 6, 6, numfmt = NF_USD2, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 48, 50, 6, 6, numfmt = NF_INT, halign = "RIGHT"))
-b$push(fmt_cells(S_BUD, 46, 50, 7, 8, bold = TRUE, font_size = 10, halign = "CENTER"))
-b$push(fmt_cells(S_BUD, 50, 50, 2, 6, bold = TRUE))
-b$push(fmt_borders(S_BUD, 46, 50, 2, 8, inner_h = list(style = "SOLID", color = COL_HAIR), bottom = list(style = "SOLID", color = COL_HAIR)))
-b$push(fmt_tab_color(S_BUD, hex_to_color(PAL[["amber"]])))
-b$push(fmt_freeze(S_BUD, rows = 5)); b$push(fmt_gridlines(S_BUD, show = FALSE))
+b$push(fmt_tab_base(S_BUD, 55, 10, "model", widths = c(170, 110, 110, 110, 100, 80, 190, 120), inputs = TRUE,
+                    freeze_rows = 0))   # no freeze: frozen rows repeat on every printed page, over unrelated blocks
+b$push(col_header(S_BUD, 5, 2, 9, num = 3:7, ink = TRUE)); b$push(fmt_cells(S_BUD, 5, 5, 8, 9, halign = "CENTER"))
+b$push(fmt_table_body(S_BUD, 6, 15, 2, 9, numeric_cols = 3:7, numfmt = list(NF_USD, NF_USD2, NF_USD2C, NF_PCT1, NF_PCT1), total_rows = 15))   # actual: a real zero prints $0.00
+b$push(apply_style(S_BUD, 6, 14, 3, 3, STYLE_INPUT))
+b$push(fmt_status(S_BUD, 6, 15, 9, 9, c("Over budget" = "negative", "No budget" = "negative", "Close to limit" = "warning")))
+b$push(col_header(S_BUD, 17, 2, 6, num = 3:6, ink = TRUE))
+b$push(fmt_table_body(S_BUD, 18, 21, 2, 6, numeric_cols = 3:6, numfmt = list(NF_USD, NF_USD2C, NF_USD2C, NF_PCT1)))
+b$push(fmt_cells(S_BUD, 20, 20, 3, 4, numfmt = NF_PCT1)); b$push(fmt_cells(S_BUD, 20, 20, 5, 5, numfmt = NF_PTS))
+b$push(fmt_cells(S_BUD, 21, 21, 3, 3, numfmt = NF_PCT0)); b$push(apply_style(S_BUD, 21, 21, 4, 4, STYLE_NOTE))
+for (r in c(18, 20, 21)) b$push(apply_style(S_BUD, r, r, 3, 3, STYLE_INPUT))   # expected income, savings goal, warning threshold
+for (s in list(c(23, 24, 3, 25, 29), c(32, 33, 5, 34, 42), c(44, 45, 7, 46, 50))) {   # heading, header, last col, body
+  b$push(fmt_section(S_BUD, s[1], 2, 9, header = FALSE)); b$push(col_header(S_BUD, s[2], 2, s[3], num = 3:s[3]))
+}
+b$push(fmt_table_body(S_BUD, 25, 29, 2, 3, numeric_cols = 3, numfmt = NF_USD))
+b$push(fmt_table_body(S_BUD, 34, 42, 2, 5, numeric_cols = 3:5, numfmt = NF_PCT0))
+b$push(fmt_table_body(S_BUD, 46, 50, 2, 7, numeric_cols = 6, numfmt = NF_USD2, total_rows = 50))
+b$push(fmt_cells(S_BUD, 45, 45, 2, 5, halign = "LEFT")); b$push(fmt_cells(S_BUD, 45, 45, 7, 7, halign = "CENTER"))
+b$push(fmt_cells(S_BUD, 48, 50, 6, 6, numfmt = NF_INT))
+b$push(fmt_status(S_BUD, 46, 50, 7, 7, c(Check = "negative", Review = "negative")))   # OK and All pass stay plain
+# chart-data rows at the default 21 px, so the first printed page ends after the first chart-data block
+for (rh in list(c(16, 16, 12), c(22, 22, 12), c(25, 29, 21), c(31, 31, 20), c(34, 42, 21), c(43, 43, 20))) b$push(fmt_row_height(S_BUD, rh[1], rh[2], rh[3]))
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Net Worth ----
 b <- new_batch()
-b$push(body_all(S_NW, 45, 17)); title_rows(b, S_NW, 14)
-b$push(fmt_col_widths(S_NW, c(16, 96, 98, 98, 104, 104, 108, 96, 90, 96, 112, 112, 112, 84, 96, 16)))
-for (g in list(list(3, 7, PAL[["teal"]], COL_WHITE), list(8, 11, PAL[["amber"]], COL_INK), list(12, 14, PAL[["blue"]], COL_WHITE))) {
-  b$push(fmt_merge(S_NW, 4, 4, g[[1]], g[[2]]))
-  b$push(fmt_cells(S_NW, 4, 4, g[[1]], g[[2]], font_size = 10, bold = TRUE, font_color = g[[4]], bg_color = hex_to_color(g[[3]]), halign = "CENTER", valign = "MIDDLE"))
-}
-b$push(fmt_row_height(S_NW, 4, 4, 24L))
-header_row(b, S_NW, 5, 2, 15, h = 38L, fill = COL_BRAND_SUBTLE)
-b$push(fmt_cells(S_NW, 5, 5, 2, 15, font_size = 10, font_color = COL_INK, bold = TRUE))
-b$push(fmt_cells(S_NW, 5, 5, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_NW, 5, 5, 3, 14, halign = "RIGHT")); b$push(fmt_cells(S_NW, 5, 5, 15, 15, halign = "LEFT"))
-b$push(fmt_row_height(S_NW, 6, 17, 26L))
-b$push(fmt_cells(S_NW, 6, 17, 2, 2, numfmt = NF_MONTH, halign = "LEFT", bold = TRUE))
-b$push(fmt_cells(S_NW, 6, 17, 3, 12, numfmt = NF_USD_NEG, halign = "RIGHT"))   # chart sources: axis reads $0, not "-"
-b$push(fmt_cells(S_NW, 6, 17, 13, 13, numfmt = NF_USD, halign = "RIGHT"))
-b$push(fmt_cells(S_NW, 6, 17, 14, 14, numfmt = NF_PCT1, halign = "RIGHT"))
-b$push(fmt_cells(S_NW, 6, 17, 15, 15, font_size = 9, font_color = COL_SLATE, halign = "LEFT"))
-b$push(fmt_borders(S_NW, 6, 17, 2, 14, inner_h = list(style = "SOLID", color = COL_HAIR), bottom = list(style = "SOLID", color = COL_HAIR)))
-input_cells(b, S_NW, 6, 17, 3, 6, numfmt = NF_USD_NEG, halign = "RIGHT")
-input_cells(b, S_NW, 6, 17, 8, 10, numfmt = NF_USD_NEG, halign = "RIGHT")
-b$push(fmt_cells(S_NW, 6, 17, 7, 7, bold = TRUE, bg_color = COL_BRAND_SUBTLE))
-b$push(fmt_cells(S_NW, 6, 17, 11, 11, bold = TRUE, bg_color = COL_BRAND_SUBTLE))
-b$push(fmt_cells(S_NW, 6, 17, 12, 12, bold = TRUE, font_size = 12, bg_color = COL_BRAND_SUBTLE))
-b$push(fmt_row_height(S_NW, 19, 36, 21L))
-b$push(fmt_tab_color(S_NW, hex_to_color(PAL[["violet"]])))
-b$push(fmt_freeze(S_NW, rows = 5)); b$push(fmt_gridlines(S_NW, show = FALSE))
+b$push(fmt_tab_base(S_NW, 45, 16, "model", widths = c(96, 98, 98, 104, 104, 108, 96, 90, 96, 112, 112, 112, 84, 96), inputs = TRUE, freeze_rows = 5))
+b$push(apply_style(S_NW, 4, 4, 2, 15, STYLE_HEADER, font_size = 10, font_color = COL_INK, wrap = FALSE))   # group labels
+b$push(fmt_borders(S_NW, 4, 4, 2, 15, top = BORDER_INK)); b$push(fmt_row_height(S_NW, 4, 4, 24L))
+b$push(col_header(S_NW, 5, 2, 15, num = 3:14)); b$push(fmt_row_height(S_NW, 5, 5, 36L))
+b$push(fmt_table_body(S_NW, 6, 17, 2, 15, numeric_cols = 3:14, total_col = c(7, 11, 12),
+                      numfmt = c(rep(list(NF_USD_NEG), 10), list(NUMFMT_DELTA_CURRENCY, NUMFMT_DELTA_PCT))))   # chart sources: $0, not "-"
+b$push(fmt_cells(S_NW, 6, 17, 2, 2, numfmt = NF_MONTH, halign = "LEFT"))
+b$push(fmt_cells(S_NW, 6, 6, 13, 14, font_color = COL_TEXT_3))
+b$push(apply_style(S_NW, 6, 17, 15, 15, STYLE_NOTE, halign = "CENTER")); b$push(fmt_cells(S_NW, 5, 5, 15, 15, halign = "CENTER"))
+for (g in list(c(3, 6), c(8, 10))) b$push(apply_style(S_NW, 6, 17, g[1], g[2], STYLE_INPUT))
+b$push(apply_style(S_NW, 20, 20, 2, 2, STYLE_NOTE)); b$push(fmt_row_height(S_NW, 18, 19, 12L))
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Trends ----
 b <- new_batch()
-b$push(body_all(S_TRD, 45, 17)); title_rows(b, S_TRD, 14)
-b$push(fmt_col_widths(S_TRD, c(16, 128, rep(80, 12), 104, 16)))      # C..N months, O = Grand Total
-header_row(b, S_TRD, 5, 2, 7)
-b$push(fmt_cells(S_TRD, 5, 5, 2, 2, halign = "LEFT")); b$push(fmt_cells(S_TRD, 5, 5, 3, 6, halign = "RIGHT")); b$push(fmt_cells(S_TRD, 5, 5, 7, 7, halign = "LEFT"))
-b$push(fmt_row_height(S_TRD, 4, 4, 10L)); b$push(fmt_row_height(S_TRD, 20, 21, 10L)); b$push(fmt_row_height(S_TRD, 23, 23, 22L))
-b$push(fmt_row_height(S_TRD, 6, 19, 24L))
-b$push(fmt_cells(S_TRD, 6, 17, 2, 2, numfmt = NF_MONTH, halign = "LEFT", bold = TRUE))
-b$push(fmt_cells(S_TRD, 6, 19, 3, 5, numfmt = NF_USD_NEG, halign = "RIGHT"))   # chart sources: axis reads $0, not "-"
-b$push(fmt_cells(S_TRD, 6, 18, 6, 6, numfmt = NF_PCT1, halign = "RIGHT"))
-b$push(fmt_cells(S_TRD, 6, 17, 7, 7, font_size = 9, font_color = COL_SLATE, halign = "LEFT"))
-b$push(fmt_borders(S_TRD, 6, 17, 2, 6, inner_h = list(style = "SOLID", color = COL_HAIR)))
-b$push(apply_style(S_TRD, 18, 19, 2, 6, STYLE_BRAND_SUBTOTAL))
-b$push(fmt_borders(S_TRD, 18, 18, 2, 6, top = list(style = "SOLID", color = COL_BRAND)))
-b$push(fmt_cells(S_TRD, 22, 22, 2, 2, font_size = 12, bold = TRUE, font_color = COL_INK))
-b$push(fmt_row_height(S_TRD, 22, 22, 30L))
-b$push(fmt_cells(S_TRD, 23, 23, 2, 2, font_size = 9, italic = TRUE, font_color = COL_SLATE, valign = "MIDDLE"))
-b$push(fmt_borders(S_TRD, 22, 22, 2, 15, bottom = list(style = "SOLID_MEDIUM", color = COL_BRAND)))
-b$push(fmt_tab_color(S_TRD, hex_to_color(PAL[["sky"]])))
-b$push(fmt_freeze(S_TRD, rows = 3)); b$push(fmt_gridlines(S_TRD, show = FALSE))
+b$push(fmt_tab_base(S_TRD, 45, 16, "model", widths = c(128, rep(80, 12), 104), freeze_rows = 3))   # C..N months, O = Grand Total
+b$push(col_header(S_TRD, 5, 2, 7, num = 3:6, ink = TRUE))
+b$push(fmt_table_body(S_TRD, 6, 19, 2, 7, numeric_cols = 3:6, numfmt = c(rep(list(NF_USD_NEG), 3), list(NF_PCT1)), total_rows = 18))
+b$push(fmt_cells(S_TRD, 6, 17, 2, 2, numfmt = NF_MONTH, halign = "LEFT"))
+b$push(apply_style(S_TRD, 6, 17, 7, 7, STYLE_NOTE, halign = "CENTER")); b$push(fmt_cells(S_TRD, 5, 5, 7, 7, halign = "CENTER"))
+b$push(fmt_row_height(S_TRD, 20, 21, 10L))
+b$push(fmt_section(S_TRD, 22, 2, 15, header = FALSE)); b$push(apply_style(S_TRD, 23, 23, 2, 2, STYLE_NOTE)); b$push(fmt_row_height(S_TRD, 23, 23, 22L))
 batch_format(ss, b$get(), strict = TRUE)
 
 # ---- Dashboard ----
-R <- list(top = 1, title = 2, sub = 3, gap1 = 4, kl = 5, kv = 6, ks = 7, gap2 = 8, hh = 9, hn = 10, hp = 11,
-          gap3 = 12, c1 = 13, c1e = 27, gap4 = 28, c2 = 29, c2e = 43, gap5 = 44)
+BOX <- list(style = "SOLID_MEDIUM", color = COL_ACCENT)
 b <- new_batch(); sd <- S_DASH
-b$push(body_all(sd, 60, 20))
-b$push(fmt_col_widths(sd, c(16, rep(60, 18), 16)))
-for (rh in list(c(1, 1, 8), c(2, 2, 46), c(3, 3, 22), c(4, 4, 10), c(5, 5, 20), c(6, 6, 46), c(7, 7, 22), c(8, 8, 14),
-                c(9, 9, 26), c(10, 10, 22), c(11, 11, 34), c(12, 12, 14), c(13, 27, 21), c(28, 28, 14), c(29, 43, 21), c(44, 44, 14),
-                c(45, 45, 28), c(46, 46, 24), c(47, 52, 30), c(53, 53, 40), c(54, 60, 21)))
+b$push(fmt_tab_base(sd, 62, 12, "dashboard", widths = c(224, rep(112, 4), 24, rep(96, 3), 144)))
+b$push(apply_style(sd, 2, 2, CTRL[2] - 1L, CTRL[2] - 1L, STYLE_NOTE, halign = "RIGHT"))      # "Month"
+b$push(apply_style(sd, CTRL[1], CTRL[1], CTRL[2], CTRL[2], STYLE_CONTROL, valign = "MIDDLE", numfmt = NF_MONTH_LONG))
+b$push(fmt_borders(sd, CTRL[1], CTRL[1], CTRL[2], CTRL[2], top = BOX, bottom = BOX, left = BOX, right = BOX))
+b$push(fmt_status(sd, 4, 4, CTRL[2], CTRL[2], c("✓" = "positive", "✕" = "negative"), op = "starts_with"))   # self-check badge
+b$push(fmt_kpi_strip(sd, 6, K_COLS, lead = 2, good = c("down", "up", "up", "up", "up", "none"), rule_end_col = 11,
+                     value_numfmt = list(NF_USD_NEG, NF_USD_NEG, NF_USD_NEG, NF_PCT1, NF_USD_NEG, NULL),
+                     delta_numfmt = list(NULL, NUMFMT_DELTA_PCT, NUMFMT_DELTA_CURRENCY, NUMFMT_DELTA_PT, NUMFMT_DELTA_CURRENCY, NULL)))
+b$push(apply_style(sd, 9, 9, 2, 2, STYLE_NOTE))
+for (s in c(11, 26, 37, 54)) b$push(fmt_section(sd, s, 2, 11, header = FALSE, meta_col = if (s == 11) 6 else if (s == 37) 11 else NULL))
+b$push(col_header(sd, 12, 2, 6, num = 3:5)); b$push(fmt_cells(sd, 12, 12, 6, 6, halign = "CENTER"))
+b$push(fmt_table_body(sd, 13, 22, 2, 6, numeric_cols = 3:5, numfmt = list(NF_USD, NF_USD2, NF_PCT0), density = "dashboard", total_rows = 22))   # spent in cents: the column adds up
+b$push(fmt_status(sd, 13, 21, 6, 6, c("Over budget" = "negative", "No budget" = "negative", "Close to limit" = "warning")))
+b$push(col_header(sd, 27, 2, 5, num = 3:4))
+b$push(fmt_table_body(sd, 28, 33, 2, 5, numeric_cols = 3:4, numfmt = list(NF_USD, NF_PCT0), density = "dashboard", total_rows = 33))
+for (r in c(24, 35)) b$push(apply_style(sd, r, r, 2, 2, STYLE_NOTE))
+b$push(apply_style(sd, 55, 61, 2, 3, STYLE_BODY, font_color = COL_TEXT_2))
+b$push(fmt_cells(sd, 56, 57, 2, 2, font_color = COL_ACCENT_700))             # the two link rows (theme link colour)
+b$push(apply_style(sd, 59, 59, 2, 2, STYLE_INPUT)); b$push(fmt_cells(sd, 60, 60, 2, 2, font_color = COL_INK))   # colour key
+for (rh in list(c(5, 5, 12), c(9, 10, 20), c(23, 23, 8), c(24, 25, 20), c(34, 34, 8), c(35, 36, 20), c(53, 53, 20), c(55, 61, 22)))
   b$push(fmt_row_height(sd, rh[1], rh[2], rh[3]))
-# title, badge, month picker
-b$push(fmt_merge(sd, 2, 2, 2, 9)); b$push(fmt_merge(sd, 2, 2, 10, 11)); b$push(fmt_merge(sd, 2, 2, 14, 16)); b$push(fmt_merge(sd, 2, 2, 17, 19))
-b$push(apply_style(sd, 2, 2, 2, 9, STYLE_TITLE, font_size = 26, font_color = COL_INK))
-b$push(fmt_cells(sd, 2, 2, 10, 11, font_size = 9, bold = TRUE, font_color = hex_to_color("8A5A00"), bg_color = COL_WARNING_SOFT, halign = "CENTER", valign = "MIDDLE"))
-b$push(fmt_borders(sd, 2, 2, 10, 11, top = list(style = "SOLID_THICK", color = COL_WHITE), bottom = list(style = "SOLID_THICK", color = COL_WHITE)))
-b$push(fmt_cells(sd, 2, 2, 14, 16, font_size = 10, bold = TRUE, font_color = COL_SLATE, halign = "RIGHT", valign = "MIDDLE"))
-b$push(fmt_cells(sd, 2, 2, 17, 19, font_size = 15, bold = TRUE, font_color = COL_INPUT_FG, bg_color = COL_INPUT_BG, halign = "CENTER", valign = "MIDDLE",
-          numfmt = NF_MONTH_LONG))
-b$push(fmt_borders(sd, 2, 2, 17, 19, top = list(style = "SOLID_MEDIUM", color = COL_BRAND), bottom = list(style = "SOLID_MEDIUM", color = COL_BRAND),
-                   left = list(style = "SOLID_MEDIUM", color = COL_BRAND), right = list(style = "SOLID_MEDIUM", color = COL_BRAND)))
-b$push(fmt_cells(sd, 3, 3, 2, 19, font_size = 10, font_color = COL_SLATE, valign = "MIDDLE"))
-b$push(fmt_merge(sd, 3, 3, 2, 14)); b$push(fmt_merge(sd, 3, 3, 15, 19))
-b$push(fmt_cells(sd, 3, 3, 2, 14, font_size = 11, font_color = COL_INK, valign = "MIDDLE", halign = "LEFT"))        # headline
-b$push(fmt_cells(sd, 3, 3, 15, 19, font_size = 9, italic = TRUE, font_color = COL_SLATE, valign = "MIDDLE", halign = "RIGHT"))   # view-only hint
-# KPI cards
-acc <- unname(PAL[c("blue", "amber", "teal", "violet", "navy", "sky")])
-for (k in 1:6) {
-  c1 <- kcol[k]; c2 <- c1 + 2L
-  for (r in 5:7) b$push(fmt_merge(sd, r, r, c1, c2))
-  b$push(fmt_cells(sd, 5, 7, c1, c2, bg_color = COL_PANEL, halign = "CENTER", valign = "MIDDLE"))
-  b$push(fmt_cells(sd, 5, 5, c1, c2, font_size = 9, bold = TRUE, font_color = COL_SLATE))
-  b$push(fmt_cells(sd, 6, 6, c1, c2, font_size = 26, bold = TRUE, font_color = COL_INK))
-  b$push(fmt_cells(sd, 7, 7, c1, c2, font_size = 10, font_color = COL_SLATE))
-  b$push(fmt_borders(sd, 5, 7, c1, c2, left = WHITE_THICK, right = WHITE_THICK))
-  b$push(fmt_borders(sd, 5, 5, c1, c2, top = list(style = "SOLID_THICK", color = hex_to_color(acc[k]))))
-}
-for (cc in c(2, 5, 8, 14)) b$push(fmt_cells(sd, 6, 6, cc, cc + 2, numfmt = NF_USD_NEG))
-for (cc in c(11, 17)) b$push(fmt_cells(sd, 6, 6, cc, cc + 2, numfmt = NF_PCT1))
-# budget health strip
-b$push(fmt_cells(sd, 9, 9, 2, 19, font_size = 12, bold = TRUE, font_color = COL_INK, valign = "MIDDLE"))
-b$push(fmt_merge(sd, 9, 9, 10, 19))
-b$push(fmt_cells(sd, 9, 9, 10, 19, font_size = 9, bold = FALSE, font_color = COL_SLATE, halign = "RIGHT"))
-for (i in 1:9) {
-  c1 <- 2L + 2L * (i - 1L); c2 <- c1 + 1L
-  b$push(fmt_merge(sd, 10, 10, c1, c2)); b$push(fmt_merge(sd, 11, 11, c1, c2))
-  b$push(fmt_cells(sd, 10, 11, c1, c2, bg_color = COL_PANEL, halign = "CENTER", valign = "MIDDLE"))
-  b$push(fmt_cells(sd, 10, 10, c1, c2, font_size = 9, bold = TRUE))
-  b$push(fmt_cells(sd, 11, 11, c1, c2, font_size = 14, bold = TRUE, numfmt = NF_PCT0))
-  b$push(fmt_borders(sd, 10, 11, c1, c2, left = WHITE_THICK, right = WHITE_THICK))
-}
-# chart panels
-for (pr in list(c(R$c1, R$c1e, 2, 10), c(R$c1, R$c1e, 11, 19), c(R$c2, R$c2e, 2, 10), c(R$c2, R$c2e, 11, 19))) {
-  b$push(fmt_cells(sd, pr[1], pr[2], pr[3], pr[4], bg_color = COL_PANEL))
-  b$push(fmt_borders(sd, pr[1], pr[2], pr[3], pr[4], left = WHITE_THICK, right = WHITE_THICK))
-  b$push(fmt_borders(sd, pr[1], pr[1], pr[3], pr[4], top = list(style = "SOLID_THICK", color = COL_BRAND)))
-}
-# top 5 + about panels
-rt <- R_TOP
-for (pr in list(c(rt, rt + 8, 2, 10), c(rt, rt + 8, 11, 19))) {
-  b$push(fmt_cells(sd, pr[1], pr[2], pr[3], pr[4], bg_color = COL_PANEL, valign = "MIDDLE"))
-  b$push(fmt_borders(sd, pr[1], pr[2], pr[3], pr[4], left = WHITE_THICK, right = WHITE_THICK))
-  b$push(fmt_borders(sd, pr[1], pr[1], pr[3], pr[4], top = list(style = "SOLID_THICK", color = COL_BRAND)))
-  b$push(fmt_cells(sd, pr[1], pr[1], pr[3], pr[4], font_size = 12, bold = TRUE, font_color = COL_INK))
-}
-b$push(fmt_merge(sd, rt, rt, 17, 19))
-b$push(fmt_cells(sd, rt, rt, 17, 19, font_size = 9, bold = TRUE, font_color = COL_SLATE, halign = "RIGHT"))        # self-check status
-b$push(fmt_cells(sd, rt + 1, rt + 1, 2, 10, font_size = 9, bold = TRUE, font_color = COL_SLATE))
-b$push(fmt_cells(sd, rt + 1, rt + 1, 6, 8, halign = "RIGHT"))
-for (r in (rt + 2):(rt + 8)) { b$push(fmt_merge(sd, r, r, 3, 5)); b$push(fmt_merge(sd, r, r, 6, 7)); b$push(fmt_merge(sd, r, r, 9, 10)) }
-b$push(fmt_merge(sd, rt + 1, rt + 1, 3, 5)); b$push(fmt_merge(sd, rt + 1, rt + 1, 6, 7)); b$push(fmt_merge(sd, rt + 1, rt + 1, 9, 10))
-rank_bg <- unname(PAL[c("blue", "teal", "amber", "violet", "sky", "slate")])
-rank_fg <- list(COL_WHITE, COL_INK, COL_INK, COL_WHITE, COL_INK, COL_INK)       # keep text readable on each fill
-for (k in 1:6) b$push(fmt_cells(sd, rt + 1 + k, rt + 1 + k, 2, 2, bold = TRUE, font_color = rank_fg[[k]],
-                         bg_color = hex_to_color(rank_bg[k]), halign = "CENTER"))
-b$push(fmt_cells(sd, rt + 8, rt + 8, 2, 2, bg_color = COL_PANEL))
-b$push(fmt_cells(sd, rt + 2, rt + 8, 3, 5, halign = "LEFT", font_size = 11))
-b$push(fmt_cells(sd, rt + 2, rt + 8, 6, 7, numfmt = NF_USD, halign = "RIGHT", font_size = 11))
-b$push(fmt_cells(sd, rt + 2, rt + 8, 8, 8, numfmt = NF_PCT0, halign = "RIGHT", font_color = COL_SLATE))
-b$push(fmt_borders(sd, rt + 2, rt + 7, 2, 10, inner_h = list(style = "SOLID", color = COL_HAIR)))
-b$push(fmt_cells(sd, rt + 8, rt + 8, 3, 8, bold = TRUE, font_color = COL_INK))   # back from the slate share column
-b$push(fmt_borders(sd, rt + 8, rt + 8, 2, 10, top = list(style = "SOLID", color = COL_BRAND)))
-for (r in c(rt + 2:5, rt + 8)) {
-  b$push(fmt_merge(sd, r, r, 11, 19))
-  b$push(fmt_cells(sd, r, r, 11, 19, font_size = 10, font_color = COL_SLATE, wrap = TRUE, valign = "MIDDLE", halign = "LEFT"))
-}
-for (r in c(rt + 6, rt + 7)) { b$push(fmt_merge(sd, r, r, 11, 12)); b$push(fmt_merge(sd, r, r, 13, 19))
-  b$push(fmt_cells(sd, r, r, 13, 19, font_size = 10, font_color = COL_SLATE, valign = "MIDDLE", halign = "LEFT")) }
-b$push(fmt_cells(sd, rt + 6, rt + 6, 11, 12, font_size = 10, bold = TRUE, font_color = COL_INPUT_FG, bg_color = COL_INPUT_BG, halign = "CENTER", valign = "MIDDLE"))
-b$push(fmt_cells(sd, rt + 7, rt + 7, 11, 12, font_size = 10, bold = TRUE, font_color = COL_INK, bg_color = hex_to_color("E7EAF0"), halign = "CENTER", valign = "MIDDLE"))
-b$push(fmt_borders(sd, rt + 6, rt + 7, 11, 12, inner_h = WHITE_THICK, top = WHITE_THICK, bottom = WHITE_THICK))
-b$push(fmt_cells(sd, rt + 2, rt + 2, 11, 19, font_size = 10, font_color = COL_INK))
-b$push(fmt_cells(sd, rt + 3, rt + 4, 11, 19, font_size = 10, font_color = COL_BRAND))          # the two link rows
-b$push(fmt_tab_color(sd, COL_BRAND)); b$push(fmt_freeze(sd, rows = 3)); b$push(fmt_gridlines(sd, show = FALSE))
 batch_format(ss, b$get(), strict = TRUE)
 
 # =============================================================================
-# Conditional formatting (own batch per tab so one bad rule cannot sink the rest)
+# Conditional formatting: colour only where there is risk (own batch per tab so one bad rule cannot sink the rest)
 # =============================================================================
-# b$cf() numbers the rules in listing order, so the first rule that matches wins.
 b <- new_batch()
-# A custom formula cannot name another tab, so the one threshold is read with INDIRECT: legend, bars, status and strip never drift.
-WARN_REF <- 'INDIRECT("Budget!$C$21")'
-for (rule in list(list(sprintf('=OR(B$11="%s",AND(ISNUMBER(B$11),B$11>1))', NO_BUD), BAD), list(paste0("=AND(ISNUMBER(B$11),B$11>=", WARN_REF, ")"), WARN), list("=ISNUMBER(B$11)", GOOD)))
-  b$cf(fmt_cond_formula, S_DASH, 10, 11, 2, 19, rule[[1]], font_color = rule[[2]]$fg, bg_color = rule[[2]]$bg)
-text_rule <- function(b, r, cc, op, text, color) b$cf(fmt_cond_text, S_DASH, r, r, cc, cc, op = op, text = text, font_color = color$fg, bold = TRUE)
-for (cc in c(2, 8, 14)) { text_rule(b, 7, cc, "starts_with", "▲", GOOD); text_rule(b, 7, cc, "starts_with", "▼", BAD) }   # up is good: income, savings, net worth
-text_rule(b, 7, 5, "starts_with", "▲", BAD); text_rule(b, 7, 5, "starts_with", "▼", GOOD)                              # spending up is bad
-text_rule(b, 7, 11, "contains", "on track", GOOD); text_rule(b, 7, 11, "contains", "below goal", BAD)
-b$cf(fmt_cond_formula, S_DASH, 7, 7, 17, 17, "=$Q$6>1", font_color = BAD$fg, bold = TRUE)
-b$cf(fmt_cond_formula, S_DASH, 7, 7, 17, 17, paste0("=$Q$6>=", WARN_REF), font_color = WARN$fg, bold = TRUE)
-b$cf(fmt_cond_formula, S_DASH, 7, 7, 17, 17, paste0("=$Q$6<", WARN_REF), font_color = GOOD$fg, bold = TRUE)
-text_rule(b, R_TOP, 17, "starts_with", "✓", GOOD); text_rule(b, R_TOP, 17, "starts_with", "⚠", BAD)
-b$cf(fmt_cond_number, S_DASH, 6, 6, 8, 8, 0, "less", font_color = BAD$fg)
+for (rg in list(c(6, 15, 5, 6), c(18, 19, 5, 6), c(20, 20, 5, 5)))
+  b$cf(fmt_cond_number, S_BUD, rg[1], rg[2], rg[3], rg[4], 0, "less", font_color = COL_NEGATIVE)
+batch_format(ss, b$get(), strict = TRUE)
+
+b <- new_batch()   # selected month: raised grey and bold, never blue (blue means "you can type here")
+b$cf(fmt_cond_formula, S_NW, 6, 17, 2, 15, '=RIGHT($O6,1)="●"', bg_color = COL_RAISED, bold = TRUE)
+b$cf(fmt_cond_number, S_NW, 7, 17, 13, 14, 0, "less", font_color = COL_NEGATIVE)
 batch_format(ss, b$get(), strict = TRUE)
 
 b <- new_batch()
-for (rg in list(c(6, 15, 5, 6), c(18, 19, 5, 6), c(20, 20, 5, 5))) {
-  b$cf(fmt_cond_number, S_BUD, rg[1], rg[2], rg[3], rg[4], 0, "less", font_color = BAD$fg, bg_color = BAD$bg, bold = TRUE)
-  b$cf(fmt_cond_number, S_BUD, rg[1], rg[2], rg[3], rg[4], 0, "greater_eq", font_color = GOOD$fg, bg_color = GOOD$bg)
-}
-b$cf(fmt_cond_text_equals, S_BUD, 6, 15, 9, 9, "Over budget", font_color = BAD$fg, bg_color = BAD$bg)
-b$cf(fmt_cond_text_equals, S_BUD, 6, 15, 9, 9, "No budget", font_color = BAD$fg, bg_color = BAD$bg)
-b$cf(fmt_cond_text_equals, S_BUD, 6, 15, 9, 9, "Close to limit", font_color = WARN$fg, bg_color = WARN$bg)
-b$cf(fmt_cond_text_equals, S_BUD, 6, 15, 9, 9, "On track", font_color = GOOD$fg, bg_color = GOOD$bg)
-for (ok in c("OK", "All pass")) b$cf(fmt_cond_text_equals, S_BUD, 46, 50, 7, 7, ok, font_color = GOOD$fg, bg_color = GOOD$bg)
-for (no in c("Check", "Review")) b$cf(fmt_cond_text_equals, S_BUD, 46, 50, 7, 7, no, font_color = BAD$fg, bg_color = BAD$bg)
+b$cf(fmt_cond_formula, S_TRD, 6, 17, 2, 7, '=RIGHT($G6,1)="●"', bg_color = COL_RAISED, bold = TRUE)
+b$cf(fmt_cond_number, S_TRD, 6, 17, 5, 5, 0, "less", font_color = COL_NEGATIVE)
 batch_format(ss, b$get(), strict = TRUE)
 
-b <- new_batch()
-b$cf(fmt_cond_number, S_NW, 7, 17, 13, 14, 0, "less", font_color = BAD$fg)
-b$cf(fmt_cond_number, S_NW, 7, 17, 13, 14, 0, "greater_eq", font_color = GOOD$fg)
-b$cf(fmt_cond_formula, S_NW, 6, 17, 2, 15, '=RIGHT($O6,1)="●"', bg_color = hex_to_color("EAF1FF"))
-batch_format(ss, b$get(), strict = TRUE)
-
-b <- new_batch()
-b$cf(fmt_cond_formula, S_TRD, 6, 17, 2, 7, '=RIGHT($G6,1)="●"', bg_color = hex_to_color("EAF1FF"))
-b$cf(fmt_cond_number, S_TRD, 6, 17, 5, 5, 0, "less", font_color = BAD$fg, bold = TRUE)
-batch_format(ss, b$get(), strict = TRUE)
-
-b <- new_batch()
-b$cf(fmt_cond_formula, S_TXN, 5, LAST_ROW, 7, 7,                     # first, so it wins: Type must match the category's kind (Lists)
-          '=AND($D5<>"",$G5<>"",$G5<>IFERROR(VLOOKUP($D5,INDIRECT("Lists!$D$5:$E$16"),2,FALSE),$G5))', font_color = BAD$fg, bg_color = BAD$bg, bold = TRUE)
-b$cf(fmt_cond_text_equals, S_TXN, 5, LAST_ROW, 7, 7, "Income", font_color = GOOD$fg, bold = TRUE)
-b$cf(fmt_cond_formula, S_TXN, 5, LAST_ROW, 6, 6, '=$G5="Income"', font_color = GOOD$fg)
+b <- new_batch()   # Type must match the category's kind (Lists)
+b$cf(fmt_cond_formula, S_TXN, 5, LAST_ROW, 7, 7, '=AND($D5<>"",$G5<>"",$G5<>IFERROR(VLOOKUP($D5,INDIRECT("Lists!$D$5:$E$16"),2,FALSE),$G5))',
+     font_color = STATUS$negative$ink, bg_color = STATUS$negative$fill, bold = TRUE)
 batch_format(ss, b$get(), strict = TRUE)
 
 # =============================================================================
-# Dropdowns, filter, banding
+# Dropdowns and filter
 # =============================================================================
-b <- new_batch()
-b$push(fmt_dropdown_range(S_DASH, 2, 2, 17, 17, "=Lists!$B$5:$B$16"))
-b$push(fmt_validation(S_LST, 5, 5, 2, 2, "CUSTOM_FORMULA", "=AND(ISNUMBER(B5),DAY(B5)=1)",
-                      input_message = "Type the first day of the first month, for example 2025-10-01. The other eleven months follow."))
-b$push(fmt_validation(S_BUD, 6, 14, 3, 3, "NUMBER_GREATER_THAN_EQ", 0,
-                      input_message = "Enter a monthly budget of 0 or more. A category with a 0 budget shows as 'no budget' when you spend in it."))
-batch_format(ss, b$get(), strict = TRUE)
-
-b <- new_batch()
-b$push(fmt_dropdown_range(S_TXN, 5, LAST_ROW, 4, 4, "=Lists!$D$5:$D$16"))
-b$push(fmt_dropdown_range(S_TXN, 5, LAST_ROW, 5, 5, "=Lists!$G$5:$G$7"))
-b$push(fmt_dropdown_range(S_TXN, 5, LAST_ROW, 7, 7, "=Lists!$I$5:$I$6"))
-b$push(fmt_validation(S_TXN, 5, LAST_ROW, 6, 6, "NUMBER_GREATER", 0,
-                      input_message = "Enter a positive amount. The Type column says whether it is income or an expense."))
-b$push(fmt_validation(S_TXN, 5, LAST_ROW, 2, 2, "DATE_IS_VALID", input_message = "Enter a date, for example 2026-03-14."))
-b$push(fmt_basic_filter(S_TXN, 4, LAST_ROW, 2, 7))   # B:G; column H is one array formula, sorting must not touch it
-# Band only the used rows plus a margin: banding all the way to LAST_ROW prints as ~20 blank banded pages (rows added past the margin are just unbanded).
-BAND_LAST <- 4L + nrow(txn) + 50L
-b$push(fmt_banding(S_TXN, 4, BAND_LAST, 2, 8, header_color = COL_BRAND, first_band = COL_WHITE, second_band = COL_PANEL))
-batch_format(ss, b$get(), strict = TRUE)
+batch_format(ss, list(
+  fmt_dropdown_range(S_DASH, CTRL[1], CTRL[1], CTRL[2], CTRL[2], "=Lists!$B$5:$B$16"),
+  fmt_validation(S_LST, 5, 5, 2, 2, "CUSTOM_FORMULA", "=AND(ISNUMBER(B5),DAY(B5)=1)",
+                 input_message = "Type the first day of the first month, for example 2025-10-01. The other eleven months follow."),
+  fmt_validation(S_BUD, 6, 14, 3, 3, "NUMBER_GREATER_THAN_EQ", 0,
+                 input_message = "Enter a monthly budget of 0 or more. A category with a 0 budget shows as 'no budget' when you spend in it.")),
+  strict = TRUE)
+batch_format(ss, list(
+  fmt_dropdown_range(S_TXN, 5, LAST_ROW, 4, 4, "=Lists!$D$5:$D$16"),
+  fmt_dropdown_range(S_TXN, 5, LAST_ROW, 5, 5, "=Lists!$G$5:$G$7"),
+  fmt_dropdown_range(S_TXN, 5, LAST_ROW, 7, 7, "=Lists!$I$5:$I$6"),
+  fmt_validation(S_TXN, 5, LAST_ROW, 6, 6, "NUMBER_GREATER", 0,
+                 input_message = "Enter a positive amount. The Type column says whether it is income or an expense."),
+  fmt_validation(S_TXN, 5, LAST_ROW, 2, 2, "DATE_IS_VALID", input_message = "Enter a date, for example 2026-03-14."),
+  fmt_basic_filter(S_TXN, 4, LAST_ROW, 2, 7)),   # B:G; column H is one array formula, sorting must not touch it
+  strict = TRUE)
 
 # =============================================================================
 # Native pivot table (spending by category x month) + heatmap
@@ -770,57 +603,46 @@ if (!(pivot_total_ok() || { Sys.sleep(3); pivot_total_ok() }))
 batch_format(ss, list(fmt_col_width(S_TRD, 16, 17, 104L)), strict = TRUE)
 
 # =============================================================================
-# Charts (cross-tab sources; chart data sits in visible columns)
+# Charts (cross-tab sources; chart data sits in visible columns). One hue per chart: the accent on the main
+# series, greys for comparisons, the negative mark only on the bars over budget.
 # =============================================================================
-LBL_TRD <- c(5, 17, 7, 7); LBL_NW <- c(5, 17, 15, 15)      # text month labels ("Sep 2026 ●"): every month shown, picked one marked
+LBL_TRD <- c(5, 17, 7, 7); LBL_NW <- c(5, 17, 15, 15)      # text month labels ("Jan 2026", "Sep ●"; Net Worth "J", "S ●"): every month shown, picked one marked
 MONTH_AXIS <- "Month (● = picked month)"
-SIZE <- c(536L, 311L)                                         # the four Dashboard charts
-# The builders read the data tab and anchor the chart on another (anchor_sheet_id); `style` is the shared look.
 batch_format(ss, list(
-  fmt_chart_pie(S_BUD, "Spending by category (top 5 + everything else)",
-                domain_range = c(25, 30, 2, 2), data_range = c(25, 30, 3, 3), donut = TRUE,
-                anchor = c(R$c1, 2L), size = SIZE, anchor_sheet_id = S_DASH, offset_y = 4L, style = CHART_STYLE),
-  fmt_chart_basic(S_BUD, "Share of budget used, biggest first (100% = limit)", "COMBO",
-                  domain_range = c(33, 42, 2, 2),
-                  series_list = list(list(range = c(33, 42, 3, 3), color = hex_to_color(PAL[["blue"]]), type = "COLUMN"),
-                                     list(range = c(33, 42, 4, 4), color = hex_to_color("E5484D"), type = "LINE",
-                                          line = list(type = "MEDIUM_DASHED", width = 2))),
-                  anchor = c(R$c1, 11L), size = SIZE, anchor_sheet_id = S_DASH, offset_x = 4L, offset_y = 4L,
-                  y_title = "% of monthly budget (axis stops at 200%)", y_min = 0, y_max = 2, style = CHART_STYLE),
-  # The savings-rate line sits on the right axis; Sheets drops a right-axis title, so the legend names it.
-  fmt_chart_basic(S_TRD, "Income vs spending, with savings rate", "COMBO",
-                  domain_range = LBL_TRD,
-                  series_list = list(list(range = c(5, 17, 3, 3), color = hex_to_color(PAL[["blue"]]), type = "COLUMN"),
-                                     list(range = c(5, 17, 4, 4), color = hex_to_color(PAL[["amber"]]), type = "COLUMN"),
-                                     list(range = c(5, 17, 6, 6), color = hex_to_color(PAL[["teal"]]), type = "LINE", axis = "RIGHT_AXIS")),
-                  anchor = c(R$c2, 2L), size = SIZE, anchor_sheet_id = S_DASH, offset_y = 4L,
-                  x_title = MONTH_AXIS, y_title = "USD per month", style = CHART_STYLE),
-  # COLUMN, not AREA: an area chart puts its last point on the plot edge and Sheets then drops that label at this width,
-  # so the "Sep ●" marker the axis title promises never showed. Month-end balances are snapshots, so columns suit them.
-  fmt_chart_basic(S_NW, "Net worth, month-end", "COLUMN",
-                  domain_range = LBL_NW,
-                  series_list = list(list(range = c(5, 17, 12, 12), color = hex_to_color(PAL[["blue"]]))),
-                  anchor = c(R$c2, 11L), size = SIZE, anchor_sheet_id = S_DASH, offset_x = 4L, offset_y = 4L, legend = "NO_LEGEND",
-                  x_title = MONTH_AXIS, y_title = "USD", style = CHART_STYLE),
-  fmt_chart_basic(S_TRD, "Monthly savings (income minus spending)", "COLUMN",
-                  domain_range = LBL_TRD,
-                  series_list = list(list(range = c(5, 17, 5, 5), color = hex_to_color(PAL[["teal"]]))),
+  # Horizontal bars keep the nine category names flat; a BAR chart cannot draw the dashed 100% line, so the axis says it.
+  fmt_chart_bar(S_BUD, "Share of each budget used, biggest first", domain_range = c(33, 42, 2, 2),
+                stacked_type = "STACKED", legend = "TOP_LEGEND",
+                series_list = list(list(range = c(33, 42, 4, 4), color = COL_ACCENT),
+                                   list(range = c(33, 42, 5, 5), color = COL_NEGATIVE)),
+                anchor = c(12L, 8L), size = c(432L, 334L), anchor_sheet_id = S_DASH,
+                x_title = "% of monthly budget (past 100% is over budget)", style = STYLE_CHART),
+  fmt_chart_pie(S_BUD, TTL$ring, domain_range = c(25, 29, 2, 2), data_range = c(25, 29, 3, 3), donut = TRUE,
+                legend = "NO_LEGEND", anchor = c(27L, 8L), size = c(432L, 222L), anchor_sheet_id = S_DASH, style = STYLE_CHART),
+  fmt_chart_basic(S_TRD, TTL$flow, "COLUMN", domain_range = LBL_TRD, legend = "TOP_LEGEND",   # left axis only: the KPI and Trends carry the rate
+                  series_list = list(list(range = c(5, 17, 3, 3), color = GREY),
+                                     list(range = c(5, 17, 4, 4), color = COL_ACCENT)),
+                  anchor = c(38L, 2L), size = c(672L, 300L), anchor_sheet_id = S_DASH,
+                  x_title = MONTH_AXIS, y_title = "USD per month", style = STYLE_CHART),
+  # LINE, not AREA: an area chart puts its last point on the plot edge and Sheets then drops that label at this width.
+  fmt_chart_basic(S_NW, TTL$nw, "LINE", domain_range = LBL_NW,
+                  series_list = list(list(range = c(5, 17, 12, 12), color = COL_ACCENT, line = list(width = 3))),
+                  anchor = c(38L, 8L), size = c(432L, 300L), anchor_sheet_id = S_DASH, legend = "NO_LEGEND",
+                  x_title = MONTH_AXIS, y_title = "USD", style = STYLE_CHART),
+  fmt_chart_basic(S_TRD, TTL$sav, "COLUMN", domain_range = LBL_TRD,
+                  series_list = list(list(range = c(5, 17, 5, 5), color = COL_ACCENT)),
                   anchor = c(5L, 8L), size = c(640L, 356L), offset_x = 12L, legend = "NO_LEGEND",
-                  x_title = MONTH_AXIS, y_title = "USD per month", style = CHART_STYLE),
-  # Net Worth: teal family = assets (darkest at the bottom of the stack), amber = liabilities, blue = net worth
-  fmt_chart_basic(S_NW, "Assets, liabilities and net worth", "LINE",
-                  domain_range = LBL_NW,
-                  series_list = list(list(range = c(5, 17, 7, 7), color = hex_to_color(PAL[["teal"]])),
-                                     list(range = c(5, 17, 11, 11), color = hex_to_color(PAL[["amber"]])),
-                                     list(range = c(5, 17, 12, 12), color = hex_to_color(PAL[["blue"]]))),
-                  anchor = c(19L, 2L), size = c(696L, 330L), offset_y = 6L,
-                  x_title = MONTH_AXIS, y_title = "USD", style = CHART_STYLE),
-  fmt_chart_basic(S_NW, "Where the assets are", "AREA",
-                  domain_range = LBL_NW,
+                  x_title = MONTH_AXIS, y_title = "Savings (income minus spending), USD", style = STYLE_CHART),
+  fmt_chart_basic(S_NW, TTL$lines, "LINE", domain_range = LBL_NW, legend = "TOP_LEGEND",
+                  series_list = list(list(range = c(5, 17, 7, 7), color = GREY, line = list(width = 2)),
+                                     list(range = c(5, 17, 11, 11), color = DARK, line = list(width = 2)),
+                                     list(range = c(5, 17, 12, 12), color = COL_ACCENT, line = list(width = 3))),
+                  anchor = c(22L, 2L), size = c(696L, 330L),
+                  x_title = MONTH_AXIS, y_title = "USD", style = STYLE_CHART),
+  fmt_chart_basic(S_NW, TTL$assets, "AREA", domain_range = LBL_NW, stacked_type = "STACKED", legend = "TOP_LEGEND",
                   series_list = lapply(3:6, function(cl) list(range = c(5, 17, cl, cl),
-                                         color = hex_to_color(c("0B6E66", PAL[["teal"]], "5CC9BF", "A8E3DD")[cl - 2L]))),
-                  anchor = c(19L, 9L), size = c(696L, 330L), offset_y = 6L, stacked_type = "STACKED",
-                  x_title = MONTH_AXIS, y_title = "USD", style = CHART_STYLE)),
+                                         color = list(DARK, GREY, COL_ACCENT_400, COL_ACCENT)[[cl - 2L]])),
+                  anchor = c(22L, 9L), size = c(696L, 330L),
+                  x_title = MONTH_AXIS, y_title = "USD", style = STYLE_CHART)),
   strict = TRUE)
 
 # =============================================================================
@@ -833,20 +655,21 @@ r_first <- which(lab %in% CAT_EXP)[1]; r_last <- tail(which(lab %in% CAT_EXP), 1
 if (is.na(r_first) || r_last - r_first + 1L != length(CAT_EXP))
   stop("The Trends pivot does not list the ", length(CAT_EXP), " expense categories in one block (found rows ",
        r_first, " to ", r_last, " of the pivot).", call. = FALSE)
-PIV_BODY <- c(PIV_R + r_first - 1L, PIV_R + r_last - 1L, 3L, 2L + N_MONTHS + 1L)   # rows, cols C..O
+PIV_HDR <- PIV_R + r_first - 2L; PIV_TOT <- PIV_R + r_last          # last header row, Grand Total row
 b <- new_batch()
-b$push(fmt_cells(S_TRD, PIV_R, PIV_R + r_first - 2L, 2, 15, bold = TRUE, italic = FALSE, font_color = COL_INK, bg_color = COL_BRAND_SUBTLE, halign = "RIGHT"))   # italic = FALSE: Sheets italicises the pivot's own labels
-b$push(fmt_cells(S_TRD, PIV_R, PIV_R + r_first - 2L, 2, 2, halign = "LEFT"))
-b$push(fmt_cells(S_TRD, PIV_BODY[1], PIV_R + r_last, 2, 2, bold = TRUE, halign = "LEFT"))
-b$push(fmt_cells(S_TRD, PIV_BODY[1], PIV_R + r_last, 3, 17, numfmt = NF_USD_NEG, halign = "RIGHT"))   # C:Q, so an extra month column is formatted too
-b$push(fmt_cells(S_TRD, PIV_R + r_last, PIV_R + r_last, 2, 15, bold = TRUE, bg_color = COL_BRAND_SUBTLE))
-b$push(fmt_cells(S_TRD, PIV_R, PIV_R + r_last, 15, 15, bold = TRUE))
-b$push(fmt_row_height(S_TRD, PIV_R, PIV_R + r_last, 22L))
+b$push(fmt_cells(S_TRD, PIV_R, PIV_TOT, 2, 17, bg_color = COL_WHITE))                         # drop the pivot's own grey header fills
+b$push(apply_style(S_TRD, PIV_R, PIV_HDR, 2, 17, STYLE_HEADER, italic = FALSE, halign = "RIGHT"))   # italic = FALSE: Sheets italicises the pivot's own labels
+b$push(fmt_cells(S_TRD, PIV_R, PIV_HDR, 2, 2, halign = "LEFT"))
+b$push(fmt_borders(S_TRD, PIV_HDR, PIV_HDR, 2, 15, bottom = BORDER_STRONG))
+b$push(fmt_table_body(S_TRD, PIV_HDR + 1L, PIV_TOT, 2, 15, numeric_cols = 3:15, numfmt = NF_USD_NEG, total_rows = PIV_TOT, total_col = 15))
+b$push(fmt_cells(S_TRD, PIV_HDR + 1L, PIV_TOT, 2, 17, italic = FALSE, font_color = COL_INK))
+b$push(fmt_row_height(S_TRD, PIV_HDR + 1L, PIV_TOT - 1L, 21L))     # so the Grand Total row prints on the first page
+b$push(fmt_cells(S_TRD, PIV_HDR + 1L, PIV_TOT, 16, 17, numfmt = NF_USD_NEG, halign = "RIGHT"))   # an extra month column is formatted too
 # One colour scale per category row, so each shows its own busy months (Travel in Dec, Jun, Mar). A single scale
 # over all rows is washed out by the rent. Housing is a fixed cost, so it stays unshaded.
 for (cat in setdiff(CAT_EXP, "Housing"))
   b$cf(fmt_cond_color_scale, S_TRD, PIV_R + match(cat, lab) - 1L, PIV_R + match(cat, lab) - 1L, 3L, 2L + N_MONTHS,
-       min_color = COL_WHITE, mid_color = hex_to_color("FDE8B6"), max_color = hex_to_color("F5B84A"))
+       min_color = SCALE_HEAT$min_color, mid_color = SCALE_HEAT$mid_color, max_color = SCALE_HEAT$max_color)
 batch_format(ss, b$get(), strict = TRUE)
 
 # =============================================================================
@@ -854,7 +677,7 @@ batch_format(ss, b$get(), strict = TRUE)
 # =============================================================================
 batch_format(ss, list(
   fmt_protected_range(S_DASH, description = "Formulas and layout. Only the month picker is meant to be changed.",
-                      unprotected_ranges = list(grid_range(S_DASH, 2, 2, 17, 19))),
+                      unprotected_ranges = list(grid_range(S_DASH, CTRL[1], CTRL[1], CTRL[2], CTRL[2]))),
   fmt_protected_range(S_BUD, description = "Formulas. Budgets, expected income, the savings goal and the warning threshold are open.",
                       unprotected_ranges = list(grid_range(S_BUD, 6, 14, 3, 3), grid_range(S_BUD, 18, 18, 3, 3), grid_range(S_BUD, 20, 21, 3, 3))),
   fmt_protected_range(S_NW, description = "Totals and net worth are formulas. Balances are open.",
@@ -866,7 +689,7 @@ batch_format(ss, list(
   fmt_protected_range(S_LST, 5, 16, 4, 5, description = "Renaming a category here breaks the Transactions rows that use the old name. Change both together.")),
   strict = TRUE)
 
-batch_format(ss, list(link_cells_req(S_DASH, R_TOP + 3L, 11L,
+batch_format(ss, list(link_cells_req(S_DASH, 56L, 2L,
   labels = about[2:3], urls = c("https://github.com/salvadoraveldano/r-googlesheets4", "https://googlesheets4.tidyverse.org"))),
   strict = TRUE)
 
