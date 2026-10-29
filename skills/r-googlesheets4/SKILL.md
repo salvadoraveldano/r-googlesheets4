@@ -4,7 +4,7 @@ description: "Builds, formats and visually checks Google Sheets from R with goog
 license: MIT
 compatibility: "Needs R (Rscript), the CRAN packages googlesheets4, googledrive and gargle (plus httpuv for the sign-in), network access and a Google account. Never installs anything without asking the user first."
 metadata:
-  version: "3.1.0"
+  version: "3.2.0"
   homepage: "https://github.com/salvadoraveldano/r-googlesheets4"
 allowed-tools: Read Glob Grep Bash(bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" status)
 ---

@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 3.2.0 - 2026-10-29
 
-**Changed: a new default look, "Ledger" (breaking, visible on the next rebuild)**
+**Changed: a new default look, "Ledger" (visible on the next rebuild; every old name keeps working)**
 
 - Every sheet now uses one design system, documented in `design-principles.md`: ink
   on white, structure from rules and type size instead of filled bands, blue only for
