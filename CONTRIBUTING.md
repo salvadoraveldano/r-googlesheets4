@@ -22,10 +22,15 @@ and no hidden installs.
    uses one scratch sheet at the default access level, and prints a PASS/FAIL table.
    Every row must pass.
 6. For a behavior change, add or update an eval in `skills/r-googlesheets4/evals/`.
-   Run evals as a dry run: give the model the skill and a scripted command output, and
-   ask for an action log (the commands it would run, plus the final message). Don't ask
-   for a full reasoning transcript, which can trip model safeguards. Last graded
-   2026-10-08: all 17 evals on Haiku, and evals 14 to 17 on Sonnet and Opus. One
+   Run evals as a dry run: load the skill explicitly (don't wait for it to trigger), give
+   the model a scripted command output, and ask for an action log (the commands it would
+   run, plus the final message). Don't ask for a full reasoning transcript, which can
+   trip model safeguards. Each eval's `setup` lists what it needs (the `run` note in
+   `evals.json` defines each item); a harness that can't provide one reports the eval
+   as BLOCKED instead of failing it. Whether the skill loads on its own is a separate
+   test: the `triggers` lists. There are 19 evals. Last graded
+   2026-10-08: the 17 that existed then on Haiku, and evals 14 to 17 on Sonnet and Opus;
+   `finance-colour-code` and `no-plug` (added 2026-10-23) have not been graded yet. One
    expectation (`share-exposure`: give the exact `GS_SCOPE_LEVEL=drive` sign-in command) failed
    on Sonnet and Opus, so SKILL.md now states the command, and both passed on a re-run.
 

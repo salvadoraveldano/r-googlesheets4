@@ -4,6 +4,7 @@
 # =============================================================================
 # Finds Rscript (even when it is not on PATH) and forwards to gs_setup.R.
 # Never installs R: when it is missing this prints the options and stops.
+# GS_RSCRIPT=<path> skips the lookup and uses that Rscript (see the override below).
 # Run from the skill directory (or use the absolute path to this file).
 #
 #   bash scripts/gs_setup.sh status  [email]
@@ -20,7 +21,11 @@ set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 RSCRIPT=""
-if command -v Rscript >/dev/null 2>&1; then
+if [ -n "${GS_RSCRIPT+x}" ]; then
+  # Override: use this Rscript. A path that is not executable reports NEEDS_R, so the
+  # "R not installed" branch can be tested on a machine that has R (GS_RSCRIPT=/nonexistent).
+  if [ -x "$GS_RSCRIPT" ]; then RSCRIPT="$GS_RSCRIPT"; fi
+elif command -v Rscript >/dev/null 2>&1; then
   RSCRIPT="$(command -v Rscript)"
 else
   # Windows (Git Bash): the CRAN installer does not put R on PATH. Newest version wins.

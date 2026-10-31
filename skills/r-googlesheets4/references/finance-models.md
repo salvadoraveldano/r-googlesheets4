@@ -11,6 +11,10 @@ Use these when stitching a multi-tab model where:
 - Inputs, formulas and links need to be told apart at a glance (§9).
 - The model needs visible integrity checks and a pass/fail badge (§10).
 
+**Defaults for any model with an Assumptions tab** (budget, P&L, balance sheet),
+even when the user does not ask: the colour code (§9) and a Checks tab with its
+badge on the P&L or Summary (§10). Leave them out only if the user says so.
+
 ## 1. Source / Override / Effective row pattern
 
 For each metric a downstream tab depends on, structure 3 rows:

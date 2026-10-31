@@ -39,6 +39,10 @@ else
   case "$out" in *"FAKE_RSCRIPT 4.10.0"*) ;; *) echo "FAIL: gs_setup.sh did not pick the newest Windows Rscript (got: $out)"; fail=1;; esac
 fi
 
+# GS_RSCRIPT pointing at no executable must report NEEDS_R (how the "R missing" eval runs on a machine with R).
+out="$(GS_RSCRIPT=/nonexistent bash skills/r-googlesheets4/scripts/gs_setup.sh status 2>&1 || true)"
+case "$out" in *"state=NEEDS_R"*) ;; *) echo "FAIL: GS_RSCRIPT=/nonexistent did not give NEEDS_R (got: $out)"; fail=1;; esac
+
 # Every references/*.md file that SKILL.md mentions must exist.
 for p in $(grep -oE 'references/[A-Za-z0-9_.-]+\.md' skills/r-googlesheets4/SKILL.md | sort -u || true); do
   [ -f "skills/r-googlesheets4/$p" ] || { echo "FAIL: SKILL.md mentions $p, which does not exist"; fail=1; }

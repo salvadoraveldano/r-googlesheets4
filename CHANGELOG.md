@@ -1,5 +1,28 @@
 # Changelog
 
+## 3.2.1 - 2026-10-30
+
+**Fixed: gaps found by an independent eval of the skill**
+
+- The description now lists sharing, so a request to share a sheet built from R
+  loads the skill.
+- Step 0: tell the user about the sign-in (account, access level, Allow) before
+  running `auth`, not after. An email taken from the model's context, the Claude
+  profile, git config or a file counts as a guess: offer it, but ask.
+- Two rules that lived only in reference files are now in SKILL.md, which is always
+  loaded: never plug a failing check, and a test that changes a sheet restores it
+  even when a read fails.
+- A model with an Assumptions tab gets the finance colour code and a Checks tab by
+  default (`finance-models.md`).
+- `auth.md`: keep a service-account key out of git, readable only by you.
+- `gs_setup.sh` honours `GS_RSCRIPT=<path>`; a path that is not executable reports
+  `NEEDS_R`, so the "R not installed" eval runs on a machine that has R.
+  `scripts/check.sh` tests it.
+- Evals: a `run` note (load the skill explicitly), a `setup` list on every eval so a
+  harness can report BLOCKED up front, a separate `triggers` set for whether the skill
+  loads on its own, and a few words of Google Sheets context on six prompts that had
+  none. CONTRIBUTING gives the right eval count (19, of which 17 have been graded).
+
 ## 3.2.0 - 2026-10-29
 
 **Changed: a new default look, "Ledger" (visible on the next rebuild; every old name keeps working)**

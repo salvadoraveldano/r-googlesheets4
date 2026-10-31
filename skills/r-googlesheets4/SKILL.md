@@ -1,10 +1,10 @@
 ---
 name: r-googlesheets4
-description: "Builds, formats and visually checks Google Sheets from R with googlesheets4 and the Sheets API v4 batchUpdate: cell styling (fonts, fills, borders, freezes), formulas, charts, conditional formatting, banded/pivot/protected ranges, multi-tab P&L, budget and KPI reports, scheduled Rscript refreshes, and a PDF render-and-review loop that catches truncated text, bad column widths and misalignment. Use when the user wants to create, write, format, refresh or QA a Google Sheet from R, or connect R to a Google account (gs4_auth, gs4_create, sheet_write, range_write). Not for .xlsx output, a plain read_sheet() to a tibble, or Google Sheets from Python or Apps Script."
+description: "Builds, formats and visually checks Google Sheets from R with googlesheets4 and the Sheets API v4 batchUpdate: cell styling (fonts, fills, borders, freezes), formulas, charts, conditional formatting, banded/pivot/protected ranges, multi-tab P&L, budget and KPI reports, scheduled Rscript refreshes, and a PDF render-and-review loop that catches truncated text, bad column widths and misalignment. Use when the user wants to create, write, format, share, refresh or QA a Google Sheet from R, or connect R to a Google account (gs4_auth, gs4_create, sheet_write, range_write). Not for .xlsx output, a plain read_sheet() to a tibble, or Google Sheets from Python or Apps Script."
 license: MIT
 compatibility: "Needs R (Rscript), the CRAN packages googlesheets4, googledrive and gargle (plus httpuv for the sign-in), network access and a Google account. Never installs anything without asking the user first."
 metadata:
-  version: "3.2.0"
+  version: "3.2.1"
   homepage: "https://github.com/salvadoraveldano/r-googlesheets4"
 allowed-tools: Read Glob Grep Bash(bash "${CLAUDE_SKILL_DIR}/scripts/gs_setup.sh" status)
 ---
@@ -53,6 +53,12 @@ community: see [Credits](#credits).
 - **State only what you observed.** If you did not read a page image, a script or a
   command output, say so; never describe it from the findings alone. When you report
   a visual check, name the pages you opened and the ones you did not.
+- **Never plug a failing check.** Do not type a number, add a balancing row or bend a
+  formula to turn a FAIL into a PASS. Trace the difference to its cause, or report it
+  as unresolved and leave the badge on ✕ ([finance-models.md](references/finance-models.md) §10).
+- **A test that changes a sheet restores it, even when a read fails.** Snapshot the
+  input first, restore it in `on.exit()` or `tryCatch(finally =)`, and confirm the
+  restore with a read ([qa-post-build.md](references/qa-post-build.md)).
 
 ## Step 0: connect (before writing any sheet code)
 
@@ -70,8 +76,8 @@ Branch on the last line, `GS_SETUP state=…`:
 | `READY` | Continue. |
 | `NEEDS_R` | R is missing. Relay the install options printed; **do not install R**. |
 | `NEEDS_INSTALL` | Ask the user for a yes, then `gs_setup.sh install` (background). |
-| `NEEDS_EMAIL` | Ask which Google account to use; never guess. |
-| `NEEDS_AUTH` | Explain the sign-in, run `gs_setup.sh auth <email>` in the background, relay the link. |
+| `NEEDS_EMAIL` | Ask which Google account to use; never guess. An email taken from your context, the Claude profile, git config or a file is a guess: offer it as an option, but ask. |
+| `NEEDS_AUTH` | **Before** running auth, tell the user: a Google sign-in page opens for <email>, at access level <level>; pick that account and click Allow. Then run `gs_setup.sh auth <email>` in the background and relay the link. |
 | `AUTH_FAILED` / `ERROR` | Relay the `[gs_setup]` line; do not retry blindly. |
 
 The full state machine, wording, access levels and failure branches are in
@@ -91,6 +97,8 @@ line differs from the default), the script calls `gs_connect("<that email>")`.
    Start each rerun with `gs_reset_tabs(ss, TABS)` so charts, banding, protections and
    named ranges do not stack or fail with "already exists" (it wipes the tabs you
    name, so only on a file the script owns; [creating-and-tabs.md](references/creating-and-tabs.md)).
+   A model with an Assumptions tab (budget, P&L, balance sheet) gets the finance colour
+   code and a Checks tab by default ([finance-models.md](references/finance-models.md) §9–10).
 4. **Verify cells**: `audit_chart_sources(ss_id)` (every tab; then compare each chart's
    series count with what you built), `audit_merge()`, `first_visible_col()`
    ([qa-post-build.md](references/qa-post-build.md)). `batch_format()` does not throw

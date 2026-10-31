@@ -96,6 +96,7 @@ Environment overrides. Each R process reads them when it starts, so set them for
 | `GS_AUTH_TIMEOUT` | Seconds to wait for the browser sign-in (default 300). |
 | `GS_NO_BROWSER=1` | Never launch a browser (link is still printed). |
 | `GS_IPV4=1` | Force IPv4 for every Google call (see "Network quirk"). |
+| `GS_RSCRIPT` | Path of the Rscript `gs_setup.sh` runs, instead of looking one up. A path that is not executable reports `NEEDS_R` (tests use `GS_RSCRIPT=/nonexistent` on a machine that has R). |
 
 `GOOGLE_APPLICATION_CREDENTIALS` and gcloud's default credentials are **ignored**:
 the skill only uses the saved user login or `GS_SA_JSON`, so a service-account key
@@ -247,6 +248,11 @@ GS_SA_JSON=/secure/path/service-account.json Rscript build.R
 Service-account JSON is created in Google Cloud Console → IAM → Service
 Accounts. The account must be added as an editor on each spreadsheet. Domain-wide
 delegation (acting as a user) is not supported by `gs_connect()`.
+
+The key is a password. Keep the file outside any git repository (this repo's
+`.gitignore` skips `*service-account*.json`, but yours may not), readable only by
+you (`chmod 600`), and point `GS_SA_JSON` at it. Never paste its contents into a
+script, a cron line or a chat.
 
 A **cron job on the same machine and OS user** does not need a service
 account: the saved user token refreshes itself headlessly, so
